@@ -24,6 +24,7 @@ import {
   RefreshCw,
   AlertCircle,
   XCircle,
+  Navigation,
 } from "lucide-react";
 import {
   API,
@@ -737,7 +738,7 @@ export function SeatPage() {
 }
 export function CheckoutPage() {
   const { id } = useParams(),
-    { notify } = useApp(),
+    { notify, user } = useApp(),
     nav = useNavigate();
   const [hold, setHold] = useState<Hold | null>(null),
     [trip, setTrip] = useState<Trip | null>(null),
@@ -918,6 +919,7 @@ export function CheckoutPage() {
                         gender: hold.seatGenders?.[seatId],
                       })),
                       contact: form.get("contact"),
+                      notificationEmail: form.get("notificationEmail"),
                     }),
                   });
                   setOrder(o);
@@ -978,18 +980,36 @@ export function CheckoutPage() {
                   </div>
                 </div>
               ))}
-              <label>
-                Contact number
-                <input
-                  name="contact"
-                  type="tel"
-                  pattern="\+?[0-9]{10,15}"
-                  placeholder="10-digit mobile number"
-                  defaultValue={hold.contact}
-                  disabled={!!order}
-                  required
-                />
-              </label>
+              <div className="booking-contact-grid">
+                <label>
+                  Contact number
+                  <input
+                    name="contact"
+                    type="tel"
+                    pattern="\+?[0-9]{10,15}"
+                    placeholder="10-digit mobile number"
+                    defaultValue={hold.contact}
+                    disabled={!!order}
+                    required
+                  />
+                </label>
+                <label>
+                  Journey notification email
+                  <input
+                    name="notificationEmail"
+                    type="email"
+                    aria-label="Journey notification email"
+                    placeholder="you@example.com"
+                    defaultValue={hold.notificationEmail || user?.email || ""}
+                    disabled={!!order}
+                    required
+                  />
+                  <small className="field-help">
+                    We’ll send a reminder on the day of your journey with your
+                    booking details and live tracking link.
+                  </small>
+                </label>
+              </div>
               {!order && (
                 <button className="button button-dark full" disabled={busy}>
                   {busy ? "Preparing your checkout…" : "Continue to payment"}
@@ -1067,6 +1087,12 @@ export function CheckoutPage() {
               <span>Passengers</span>
               <strong>{hold.seatIds.length}</strong>
             </div>
+            {(hold.notificationEmail || user?.email) && (
+              <div className="summary-row">
+                <span>Journey reminder</span>
+                <strong>{hold.notificationEmail || user?.email}</strong>
+              </div>
+            )}
             <div className="summary-total">
               <span>Total</span>
               <strong>{money(hold.amount)}</strong>
@@ -1199,9 +1225,19 @@ export function BookingsPage() {
                       </button>
                     </div>
                   )}
-                  <Link className="text-link" to={`/ticket/${b._id}`}>
-                    {b.status === "CANCELLED" ? "View cancellation details" : "View your ticket"} <ArrowUpRightIcon />
-                  </Link>
+                  <div className="journey-card-links">
+                    {b.status === "CONFIRMED" && (
+                      <Link
+                        className="button button-dark small"
+                        to={`/journey/${b._id}/live`}
+                      >
+                        Live journey <Navigation size={15} />
+                      </Link>
+                    )}
+                    <Link className="text-link" to={`/ticket/${b._id}`}>
+                      {b.status === "CANCELLED" ? "View cancellation details" : "View your ticket"} <ArrowUpRightIcon />
+                    </Link>
+                  </div>
                 </article>
               ))}
             </div>
@@ -1415,6 +1451,12 @@ export function TicketPage() {
         </section>
       )}
       <div className="ticket-actions">
+        {booking.status === "CONFIRMED" && (
+          <Link className="button button-orange" to={`/journey/${booking._id}/live`}>
+            <Navigation size={17} />
+            Live journey
+          </Link>
+        )}
         {booking.status === "CONFIRMED" && (
           <button className="button button-dark" onClick={() => window.print()}>
             <Printer size={17} />
