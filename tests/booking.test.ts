@@ -56,6 +56,7 @@ beforeEach(async () => {
     "outbox",
     "inbox",
     "idempotency",
+    "audit",
   ])
     await col(s, name).deleteMany({});
   const departure = new Date(Date.now() + 86400000);
@@ -361,7 +362,7 @@ describe("API and assistant", () => {
       ).status,
     ).toBe(403);
   });
-  it("cancels a confirmed booking through the public passenger API", async () => {
+  it("holds passenger cancellation refunds for admin approval", async () => {
     const app = createApp(() => s, cfg);
     const signup = await request(app).post("/api/auth/register").send({
       name: "Cancel Tester",
@@ -388,9 +389,82 @@ describe("API and assistant", () => {
     expect(result.status).toBe(200);
     expect(result.body.status).toBe("CANCELLED");
     expect(result.body.refundPercent).toBe(100);
+    expect(result.body.refundStatus).toBe("PENDING_APPROVAL");
     expect((await col(s, "bookings").findOne({ _id: h._id }))!.status).toBe(
       "CANCELLED",
     );
+    expect((await col(s, "refunds").findOne({ _id: "pay-api-cancel" }))!.status).toBe(
+      "PENDING_APPROVAL",
+    );
+
+    await reconcile(s, cfg.payment);
+    expect((await col(s, "refunds").findOne({ _id: "pay-api-cancel" }))!.status).toBe(
+      "PENDING_APPROVAL",
+    );
+
+    const adminSignup = await request(app).post("/api/auth/register").send({
+      name: "Refund Admin",
+      email: "refund-admin@example.test",
+      password: "test-password-123",
+    });
+    await col(s, "users").updateOne(
+      { _id: adminSignup.body.user._id },
+      { $set: { role: "admin" } },
+    );
+
+    const approved = await request(app)
+      .post("/api/admin/refunds/pay-api-cancel/approve")
+      .set("Authorization", `Bearer ${adminSignup.body.token}`);
+    expect(approved.status).toBe(200);
+    expect(approved.body.status).toBe("PENDING");
+
+    await reconcile(s, cfg.payment);
+    expect((await col(s, "refunds").findOne({ _id: "pay-api-cancel" }))!.status).toBe(
+      "COMPLETED",
+    );
+  });
+
+  it("lets an administrator reject a passenger refund with a reason", async () => {
+    const app = createApp(() => s, cfg);
+    const passenger = await request(app).post("/api/auth/register").send({
+      name: "Passenger",
+      email: "reject-passenger@example.test",
+      password: "test-password-123",
+    });
+    const departure = new Date(Date.now() + 30 * 3600000);
+    await col(s, "trips").updateOne(
+      { _id: tripId },
+      {
+        $set: {
+          departureAt: departure,
+          arrivalAt: new Date(departure.getTime() + 6 * 3600000),
+        },
+      },
+    );
+    const h = await prepare(passenger.body.user._id, ["1B"]);
+    await finalize(s, h._id, "pay-api-reject", h.amount, "INR");
+    await request(app)
+      .post(`/api/bookings/${h._id}/cancel`)
+      .set("Authorization", `Bearer ${passenger.body.token}`);
+
+    const adminSignup = await request(app).post("/api/auth/register").send({
+      name: "Refund Admin",
+      email: "reject-admin@example.test",
+      password: "test-password-123",
+    });
+    await col(s, "users").updateOne(
+      { _id: adminSignup.body.user._id },
+      { $set: { role: "admin" } },
+    );
+
+    const rejected = await request(app)
+      .post("/api/admin/refunds/pay-api-reject/reject")
+      .set("Authorization", `Bearer ${adminSignup.body.token}`)
+      .send({ reason: "Manual review declined this refund." });
+    expect(rejected.status).toBe(200);
+    const refund = await col(s, "refunds").findOne({ _id: "pay-api-reject" });
+    expect(refund!.status).toBe("REJECTED");
+    expect(refund!.rejectionReason).toContain("Manual review");
   });
 
   it("lets an administrator stop, resume and remove an unsold trip", async () => {
