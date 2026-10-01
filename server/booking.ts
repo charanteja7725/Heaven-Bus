@@ -351,6 +351,149 @@ export async function finalize(
     return { status: "CONFIRMED", booking };
   });
 }
+export function cancellationPolicy(booking: any, time: Date) {
+  const departureAt = new Date(booking.trip?.departureAt);
+  const ms = departureAt.getTime() - time.getTime();
+  const hoursBefore = ms / 3600000;
+  const status = booking.status ?? "CONFIRMED";
+
+  if (status !== "CONFIRMED")
+    return {
+      allowed: false,
+      refundPercent: 0,
+      refundAmount: booking.refundAmount ?? 0,
+      hoursBefore,
+      reason: status === "CANCELLED" ? "This ticket is already cancelled." : "This ticket cannot be cancelled.",
+    };
+
+  if (!Number.isFinite(hoursBefore) || hoursBefore < 6)
+    return {
+      allowed: false,
+      refundPercent: 0,
+      refundAmount: 0,
+      hoursBefore,
+      reason: "Online cancellation closes 6 hours before departure.",
+    };
+
+  const refundPercent = hoursBefore >= 24 ? 100 : 50;
+  return {
+    allowed: true,
+    refundPercent,
+    refundAmount: Math.floor((booking.amount * refundPercent) / 100),
+    hoursBefore,
+    reason:
+      refundPercent === 100
+        ? "100% refund when cancelled at least 24 hours before departure."
+        : "50% refund when cancelled between 6 and 24 hours before departure.",
+  };
+}
+
+export async function cancellationQuote(s: Store, booking: any) {
+  return cancellationPolicy(booking, await now(s));
+}
+
+export async function cancelBooking(
+  s: Store,
+  userId: string,
+  bookingId: string,
+) {
+  return transaction(s, async (session) => {
+    const booking = await col(s, "bookings").findOne(
+      { _id: bookingId, userId },
+      { session },
+    );
+    if (!booking) throw new AppError(404, "Booking not found");
+
+    const time = await now(s, session);
+    const policy = cancellationPolicy(booking, time);
+    if (!policy.allowed)
+      throw new AppError(409, policy.reason, "CANCELLATION_CLOSED");
+
+    const payment = await col(s, "payments").findOne(
+      { holdId: booking.holdId, outcome: "CONFIRMED" },
+      { session },
+    );
+    if (!payment?.providerId)
+      throw new AppError(
+        409,
+        "The payment record is still being reconciled. Please try again shortly.",
+        "PAYMENT_RECONCILING",
+      );
+
+    const changed = await col(s, "bookings").updateOne(
+      { _id: bookingId, userId, status: "CONFIRMED" },
+      {
+        $set: {
+          status: "CANCELLED",
+          cancelledAt: time,
+          refundPercent: policy.refundPercent,
+          refundAmount: policy.refundAmount,
+        },
+      },
+      { session },
+    );
+    if (!changed.modifiedCount)
+      throw new AppError(409, "This ticket has already changed. Please refresh.");
+
+    await col(s, "seats").updateMany(
+      { bookingId, state: "BOOKED" },
+      {
+        $set: {
+          state: "AVAILABLE",
+          bookingId: null,
+          holdId: null,
+          expiresAt: null,
+        },
+        $inc: { version: 1 },
+      },
+      { session },
+    );
+
+    await col(s, "holds").updateOne(
+      { _id: booking.holdId },
+      { $set: { state: "CANCELLED", active: false } },
+      { session },
+    );
+
+    await col(s, "payments").updateOne(
+      { _id: payment._id },
+      { $set: { outcome: "REFUND_PENDING" } },
+      { session },
+    );
+
+    await col(s, "refunds").updateOne(
+      { _id: payment.providerId },
+      {
+        $setOnInsert: {
+          _id: payment.providerId,
+          holdId: booking.holdId,
+          userId,
+          mode: booking.paymentMode,
+          createdAt: time,
+          attempts: 0,
+        },
+        $set: {
+          amount: policy.refundAmount,
+          originalAmount: booking.amount,
+          reason: "PASSENGER_CANCELLATION",
+          status: "PENDING",
+          nextAttemptAt: time,
+        },
+      },
+      { upsert: true, session },
+    );
+
+    await event(s, session, booking.trip._id);
+    return {
+      ok: true,
+      status: "CANCELLED",
+      refundPercent: policy.refundPercent,
+      refundAmount: policy.refundAmount,
+      cancelledAt: time,
+    };
+  });
+}
+
 export async function cleanup(s: Store) {
   const expired = await col(s, "holds")
     .find({ active: true, $expr: { $lte: ["$expiresAt", "$$NOW"] } })
