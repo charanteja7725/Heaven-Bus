@@ -1,6 +1,10 @@
 import * as chrono from "chrono-node";
 import { cities } from "./seed.js";
 import { col, now, type Store } from "./db.js";
+import {
+  findSupportContacts,
+  supportDisclaimer,
+} from "./support.js";
 const aliases: Record<string, string> = {
   bangalore: "Bengaluru",
   bengaluru: "Bengaluru",
@@ -16,10 +20,13 @@ const aliases: Record<string, string> = {
 };
 export async function askJarvis(s: Store, message: string, context: any = {}) {
   const text = message.toLowerCase();
+  const supportContacts = findSupportContacts(text);
   if (/refund|money.*back/.test(text))
     return {
       reply:
-        "If payment is captured after your five-minute hold expires, we create a refund request. Check My journeys for its status. A sandbox refund is simulated; bank processing times depend on the payment provider.",
+        "If payment is captured after your five-minute hold expires, we create a refund request. Check My journeys for its status. For refund help, use the Refund & Payment Resolution Desk shown below.",
+      supportContacts,
+      supportDisclaimer,
       context,
     };
   if (
@@ -34,7 +41,19 @@ export async function askJarvis(s: Store, message: string, context: any = {}) {
   if (/cancel/.test(text))
     return {
       reply:
-        "Before payment, you can release your seat hold. For a confirmed ticket, cancellation gives a 100% refund at least 24 hours before departure, a 50% refund from 6 to 24 hours, and closes inside 6 hours. Open My journeys, select the ticket, and choose Cancel confirmed ticket.",
+        "Before payment, you can release your seat hold. For a confirmed ticket, cancellation gives a 100% refund at least 24 hours before departure, a 50% refund from 6 to 24 hours, and closes inside 6 hours. Open My journeys, select the ticket, and choose Cancel confirmed ticket. The refund desk contact is shown below if you need help.",
+      supportContacts,
+      supportDisclaimer,
+      context,
+    };
+  if (supportContacts.length)
+    return {
+      reply:
+        supportContacts.length === 1
+          ? `For ${supportContacts[0].issue.toLowerCase()}, contact the ${supportContacts[0].role}. I’ve put the responsible number below.`
+          : "I found the responsible HEAVEN-BUS support contacts for those issues. Use the matching number below; urgent safety concerns are marked.",
+      supportContacts,
+      supportDisclaimer,
       context,
     };
   const cityPattern = `\\b(${Object.keys(aliases).join("|")})\\b`;
