@@ -188,12 +188,14 @@ describe("database-enforced booking safety", () => {
     await col(s, "bookings").insertMany([
       {
         _id: "gps-booking-1",
+        holdId: "gps-hold-1",
         userId: "gps-user-1",
         status: "CONFIRMED",
         trip,
       },
       {
         _id: "gps-booking-2",
+        holdId: "gps-hold-2",
         userId: "gps-user-2",
         status: "CONFIRMED",
         trip,
