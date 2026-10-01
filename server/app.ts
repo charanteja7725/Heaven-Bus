@@ -548,7 +548,7 @@ export function createApp(getStore: () => Store | null, c: Config) {
 
     if (status === "PUBLISHED" || status === "STOPPED") filter.status = status;
     if (search) {
-      const safe = search.replace(/[.*+?^${}()|[\]\\]/g, "\\  app.post("/api/admin/trips", auth, admin, async (q, r) => {");
+      const safe = search.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
       filter.$or = [
         { name: { $regex: safe, $options: "i" } },
         { from: { $regex: safe, $options: "i" } },
