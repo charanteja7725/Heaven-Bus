@@ -107,7 +107,7 @@ test("passenger registers, searches, holds, pays and prints a persistent ticket"
     page.getByRole("button", { name: "Share my live location" }),
   ).toBeVisible();
   await expect(
-    page.getByText(/confirmed passengers can opt in/i),
+    page.getByRole("heading", { name: "Help passengers see where the bus is." }),
   ).toBeVisible();
   await page.screenshot({
     path: "test-results/confirmed-ticket.png",
