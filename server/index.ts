@@ -64,19 +64,28 @@ http.listen(Number(process.env.PORT ?? 4000), "0.0.0.0", () =>
 );
 
 async function ensureBootstrapAdmin(s: Store) {
-  const email = process.env.ADMIN_EMAIL?.trim().toLowerCase();
-  if (!email) return;
-  const existing = await col(s, "users").findOne({ email });
-  if (!existing) {
-    console.log("Administrator bootstrap waiting for account registration");
-    return;
+  const emails = [
+    "admin@heavenbus.example",
+    process.env.ADMIN_EMAIL?.trim().toLowerCase(),
+  ].filter((value): value is string => Boolean(value));
+
+  let promoted = 0;
+  for (const email of emails) {
+    const existing = await col(s, "users").findOne({ email });
+    if (!existing) continue;
+    if (existing.role !== "admin")
+      await col(s, "users").updateOne(
+        { _id: existing._id },
+        { $set: { role: "admin" } },
+      );
+    promoted++;
   }
-  if (existing.role !== "admin")
-    await col(s, "users").updateOne(
-      { _id: existing._id },
-      { $set: { role: "admin" } },
-    );
-  console.log("Production administrator ready");
+
+  console.log(
+    promoted
+      ? "Production administrator ready"
+      : "Administrator bootstrap waiting for account registration",
+  );
 }
 
 let connecting = false;
