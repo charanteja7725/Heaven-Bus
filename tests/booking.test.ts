@@ -19,6 +19,7 @@ import {
   release,
   cleanup,
   snapshot,
+  cancelBooking,
 } from "../server/booking";
 import { createApp } from "../server/app";
 import { askJarvis } from "../server/jarvis";
@@ -256,6 +257,80 @@ describe("database-enforced booking safety", () => {
       "BOOKED",
     );
   });
+  it("cancels a confirmed ticket with the correct refund and releases the seat", async () => {
+    const departure = new Date(Date.now() + 30 * 3600000);
+    await col(s, "trips").updateOne(
+      { _id: tripId },
+      {
+        $set: {
+          departureAt: departure,
+          arrivalAt: new Date(departure.getTime() + 6 * 3600000),
+        },
+      },
+    );
+    const h = await prepare();
+    await finalize(s, h._id, "pay-cancel", h.amount, "INR");
+    const result = await cancelBooking(s, "u1", h._id);
+    expect(result.refundPercent).toBe(100);
+    expect(result.refundAmount).toBe(h.amount);
+    expect((await col(s, "bookings").findOne({ _id: h._id }))!.status).toBe(
+      "CANCELLED",
+    );
+    expect((await col(s, "seats").findOne({ seatId: "1A" }))!.state).toBe(
+      "AVAILABLE",
+    );
+    expect((await col(s, "refunds").findOne({ _id: "pay-cancel" }))!.amount).toBe(
+      h.amount,
+    );
+  });
+
+  it("uses a 50% cancellation refund from 6 to 24 hours and closes inside 6 hours", async () => {
+    let departure = new Date(Date.now() + 12 * 3600000);
+    await col(s, "trips").updateOne(
+      { _id: tripId },
+      {
+        $set: {
+          departureAt: departure,
+          arrivalAt: new Date(departure.getTime() + 6 * 3600000),
+        },
+      },
+    );
+    const half = await prepare("u1", ["1A"]);
+    await finalize(s, half._id, "pay-half", half.amount, "INR");
+    expect((await cancelBooking(s, "u1", half._id)).refundPercent).toBe(50);
+
+    await col(s, "bookings").deleteMany({});
+    await col(s, "payments").deleteMany({});
+    await col(s, "refunds").deleteMany({});
+    await col(s, "holds").deleteMany({});
+    await col(s, "orders").deleteMany({});
+    await col(s, "seats").updateMany(
+      { tripId },
+      {
+        $set: {
+          state: "AVAILABLE",
+          bookingId: null,
+          holdId: null,
+          expiresAt: null,
+        },
+      },
+    );
+    departure = new Date(Date.now() + 5 * 3600000);
+    await col(s, "trips").updateOne(
+      { _id: tripId },
+      {
+        $set: {
+          departureAt: departure,
+          arrivalAt: new Date(departure.getTime() + 6 * 3600000),
+        },
+      },
+    );
+    const late = await prepare("u2", ["1B"]);
+    await finalize(s, late._id, "pay-late-cancel", late.amount, "INR");
+    await expect(cancelBooking(s, "u2", late._id)).rejects.toThrow(
+      "closes 6 hours",
+    );
+  });
 });
 describe("API and assistant", () => {
   const cfg = {
@@ -285,6 +360,42 @@ describe("API and assistant", () => {
           .set("Authorization", `Bearer ${signup.body.token}`)
       ).status,
     ).toBe(403);
+  });
+  it("lets an administrator stop, resume and remove an unsold trip", async () => {
+    const app = createApp(() => s, cfg);
+    const signup = await request(app).post("/api/auth/register").send({
+      name: "Admin Tester",
+      email: "admin-api@example.test",
+      password: "test-password-123",
+    });
+    await col(s, "users").updateOne(
+      { _id: signup.body.user._id },
+      { $set: { role: "admin" } },
+    );
+    const token = signup.body.token;
+
+    const stopped = await request(app)
+      .post(`/api/admin/trips/${tripId}/stop`)
+      .set("Authorization", `Bearer ${token}`);
+    expect(stopped.status).toBe(200);
+    expect((await col(s, "trips").findOne({ _id: tripId }))!.status).toBe(
+      "STOPPED",
+    );
+
+    const resumed = await request(app)
+      .post(`/api/admin/trips/${tripId}/resume`)
+      .set("Authorization", `Bearer ${token}`);
+    expect(resumed.status).toBe(200);
+    expect((await col(s, "trips").findOne({ _id: tripId }))!.status).toBe(
+      "PUBLISHED",
+    );
+
+    const removed = await request(app)
+      .delete(`/api/admin/trips/${tripId}`)
+      .set("Authorization", `Bearer ${token}`);
+    expect(removed.status).toBe(200);
+    expect(await col(s, "trips").findOne({ _id: tripId })).toBeNull();
+    expect(await col(s, "seats").countDocuments({ tripId })).toBe(0);
   });
   it("does not accept a foreign reservation or forged webhook", async () => {
     const h = await prepare();
