@@ -71,15 +71,21 @@ export type Trip = {
   available: number;
   amenities: string[];
 };
+export type PassengerGender = "MALE" | "FEMALE" | "OTHER";
 export type Hold = {
   _id: string;
   tripId: string;
   seatIds: string[];
+  seatGenders?: Record<string, PassengerGender>;
   expiresAt: string;
   amount: number;
   state: string;
   serverNow?: string;
-  passengers?: { name: string; age: number }[];
+  passengers?: {
+    name: string;
+    age: number;
+    gender: PassengerGender;
+  }[];
   contact?: string;
   order?: any;
   payment?: any;
