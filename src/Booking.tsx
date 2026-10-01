@@ -510,8 +510,8 @@ export function SeatPage() {
                 On hold
               </span>
               <span>
-                <i className="booked" />
-                Booked
+                <i className="booked-male" />
+                Booked · male
               </span>
               <span>
                 <i className="booked-female" />
@@ -543,15 +543,23 @@ export function SeatPage() {
                     : null;
                   const femaleBooked =
                     state === "BOOKED" && seat?.gender === "FEMALE";
+                  const maleBooked =
+                    state === "BOOKED" && seat?.gender === "MALE";
+                  const otherBooked =
+                    state === "BOOKED" && seat?.gender === "OTHER";
                   const genderClass = femaleBooked
                     ? "booked-female"
-                    : state === "BOOKED"
-                      ? "booked"
-                      : state === "HELD"
-                        ? "held"
-                        : restriction
-                          ? "restricted"
-                          : "";
+                    : maleBooked
+                      ? "booked-male"
+                      : otherBooked
+                        ? "booked-other"
+                        : state === "BOOKED"
+                          ? "booked"
+                          : state === "HELD"
+                            ? "held"
+                            : restriction
+                              ? "restricted"
+                              : "";
                   const disabled =
                     busy ||
                     !!error ||
@@ -569,7 +577,11 @@ export function SeatPage() {
                           ? `held by you for a ${genderLabel(hold?.seatGenders?.[seatId]).toLowerCase()} passenger`
                           : femaleBooked
                             ? "booked by a female passenger"
-                            : restriction
+                            : maleBooked
+                              ? "booked by a male passenger"
+                              : otherBooked
+                                ? "booked by an other-gender passenger"
+                                : restriction
                               ? restriction.reason
                               : state?.toLowerCase() ?? "loading")
                       }
