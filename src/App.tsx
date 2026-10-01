@@ -36,6 +36,7 @@ import {
 } from "./Booking";
 import Admin from "./Admin";
 import Jarvis from "./Jarvis";
+import TrackingPage from "./Tracking";
 type Context = {
   user: User | null;
   login: (user: User, token: string) => void;
@@ -223,6 +224,14 @@ export default function App() {
             element={
               <Protected>
                 <TicketPage />
+              </Protected>
+            }
+          />
+          <Route
+            path="/journey/:id/live"
+            element={
+              <Protected>
+                <TrackingPage />
               </Protected>
             }
           />
