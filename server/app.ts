@@ -6,7 +6,7 @@ import jwt from "jsonwebtoken";
 import bcrypt from "bcryptjs";
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
-import { AppError, col, now, type Store } from "./db.js";
+import { AppError, col, now, transaction, type Store } from "./db.js";
 import {
   cancelBooking,
   cancellationQuote,
@@ -434,16 +434,63 @@ export function createApp(getStore: () => Store | null, c: Config) {
         },
       ])
       .next();
+    const refundDetails = await Promise.all(
+      refunds.map(async (refund: any) => {
+        const [booking, traveller] = await Promise.all([
+          col(s, "bookings").findOne({ holdId: refund.holdId }),
+          col(s, "users").findOne({ _id: refund.userId }),
+        ]);
+        return {
+          ...refund,
+          booking: booking
+            ? {
+                reference: booking.reference,
+                trip: booking.trip,
+                seatIds: booking.seatIds,
+              }
+            : null,
+          traveller: traveller
+            ? { name: traveller.name, email: traveller.email }
+            : null,
+        };
+      }),
+    );
     r.json({
       users,
       bookings,
       holds,
-      refunds,
+      refunds: refundDetails,
       trips,
       orders,
       totals: totals ?? { count: 0, revenue: 0 },
       serverNow: time,
     });
+  });
+  app.post("/api/admin/refunds/:id/approve", auth, admin, async (q, r) => {
+    r.json(
+      await sReviewRefund(
+        store(),
+        String(q.params.id),
+        "APPROVE",
+        r.locals.user._id,
+      ),
+    );
+  });
+  app.post("/api/admin/refunds/:id/reject", auth, admin, async (q, r) => {
+    const input = z
+      .object({
+        reason: z.string().trim().min(3).max(200),
+      })
+      .parse(q.body);
+    r.json(
+      await sReviewRefund(
+        store(),
+        String(q.params.id),
+        "REJECT",
+        r.locals.user._id,
+        input.reason,
+      ),
+    );
   });
   app.post("/api/admin/trips", auth, admin, async (q, r) => {
     const input = z
@@ -712,4 +759,108 @@ async function sRemoveTrip(s: Store, tripId: string, actor: string) {
   } finally {
     await session.endSession();
   }
+}
+
+async function sReviewRefund(
+  s: Store,
+  refundId: string,
+  decision: "APPROVE" | "REJECT",
+  actor: string,
+  rejectionReason?: string,
+) {
+  return transaction(s, async (session) => {
+    const refund = await col(s, "refunds").findOne(
+      { _id: refundId },
+      { session },
+    );
+    if (!refund) throw new AppError(404, "Refund request not found");
+    if (refund.reason !== "PASSENGER_CANCELLATION")
+      throw new AppError(
+        409,
+        "This is a payment-safety refund and is handled automatically.",
+        "AUTOMATIC_REFUND",
+      );
+
+    const time = await now(s, session);
+
+    if (decision === "APPROVE") {
+      if (!["PENDING_APPROVAL", "REJECTED"].includes(refund.status))
+        throw new AppError(
+          409,
+          "This refund is already approved or being processed.",
+          "REFUND_ALREADY_PROCESSING",
+        );
+
+      await col(s, "refunds").updateOne(
+        { _id: refundId },
+        {
+          $set: {
+            status: "PENDING",
+            approvedAt: time,
+            approvedBy: actor,
+            nextAttemptAt: time,
+            leaseUntil: new Date(0),
+          },
+          $unset: {
+            rejectedAt: "",
+            rejectedBy: "",
+            rejectionReason: "",
+          },
+        },
+        { session },
+      );
+      await col(s, "payments").updateOne(
+        { providerId: refundId },
+        { $set: { outcome: "REFUND_PENDING" } },
+        { session },
+      );
+    } else {
+      if (refund.status !== "PENDING_APPROVAL")
+        throw new AppError(
+          409,
+          "Only refunds awaiting approval can be rejected.",
+          "REFUND_NOT_AWAITING_APPROVAL",
+        );
+
+      await col(s, "refunds").updateOne(
+        { _id: refundId },
+        {
+          $set: {
+            status: "REJECTED",
+            rejectedAt: time,
+            rejectedBy: actor,
+            rejectionReason,
+            leaseUntil: new Date(0),
+          },
+        },
+        { session },
+      );
+      await col(s, "payments").updateOne(
+        { providerId: refundId },
+        { $set: { outcome: "REFUND_REJECTED" } },
+        { session },
+      );
+    }
+
+    await col(s, "audit").insertOne(
+      {
+        _id: randomUUID(),
+        actor,
+        action:
+          decision === "APPROVE" ? "APPROVE_REFUND" : "REJECT_REFUND",
+        refundId,
+        holdId: refund.holdId,
+        amount: refund.amount,
+        reason: rejectionReason ?? null,
+        createdAt: time,
+      },
+      { session },
+    );
+
+    return {
+      ok: true,
+      status: decision === "APPROVE" ? "PENDING" : "REJECTED",
+      refundId,
+    };
+  });
 }
