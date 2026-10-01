@@ -970,8 +970,10 @@ export function BookingsPage() {
                   <div>
                     <strong>{money(r.amount)}</strong>
                     <p>
-                      {r.mode === "sandbox" ? "Sandbox payment" : "Payment"} ·
-                      Seat hold expired
+                      {r.mode === "sandbox" ? "Sandbox payment" : "Payment"} ·{" "}
+                      {r.reason === "PASSENGER_CANCELLATION"
+                        ? "Ticket cancellation"
+                        : "Seat hold expired"}
                     </p>
                   </div>
                   <span className="status">
