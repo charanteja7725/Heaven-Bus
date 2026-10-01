@@ -4,8 +4,8 @@ A bus booking application for PS-07, Bus Seat Vanishing Act. React + TypeScript 
 
 ## Features
 
-- Passenger route search, live seat map, fixed five-minute holds, up to six seats, family mixed-gender seating, passenger details, checkout, history, printable tickets, confirmed-ticket cancellation with time-based refunds, and live journey tracking from origin to destination.
-- Admin operations dashboard: bookings, active holds, searchable scheduled trips, create departure, refunds, payment exceptions, and phone GPS broadcast for a running bus.
+- Passenger route search, live seat map, fixed five-minute holds, up to six seats, family mixed-gender seating, passenger details, checkout, history, printable tickets, confirmed-ticket cancellation with time-based refunds, and passenger-powered live journey tracking from origin to destination. Confirmed travellers can explicitly opt in to share phone GPS during the journey; fresh reports are aggregated into one bus position and individual raw locations are never returned to other passengers.
+- Admin operations dashboard: bookings, active holds, searchable scheduled trips, create departure, refunds and payment exceptions. Live journey location is passenger-powered rather than driver/admin-controlled.
 - Ask Jarvis: conversational route search with follow-up context, dates, budget and evening filters, hold/refund guidance, optional browser voice input, and issue-specific responsible support contacts for refunds, seat quality, rash driving, delays, cleaning, electricity/charging, toilets, safety, harassment, medical emergencies, luggage, boarding, AC, accessibility, tracking and staff conduct. Uses a deterministic parser and database queries, not an external LLM; it never invents trip inventory or books without confirmation.
 - Journey-day email reminders: checkout collects a notification email, confirmed bookings retain it, and a background worker sends the passenger a same-day reminder and live-tracking link when a Resend sender is configured.
 - Clearly labelled sandbox payment mode, plus Razorpay checkout, server verification, signed webhook inbox, recovery and compensating refunds.
@@ -92,8 +92,8 @@ Auth: `POST /api/auth/register`, `POST /api/auth/login`, `GET /api/auth/me`.
 Inventory: `GET /api/trips`, `GET /api/trips/:id`, `GET /api/trips/:id/seats`.
 Reservations: `POST /api/holds` (Idempotency-Key required), `GET /api/holds/current`, `GET/DELETE /api/holds/:id`.
 Payment: `POST /api/holds/:id/payment`, `POST /api/holds/:id/sandbox-pay`, `POST /api/holds/:id/verify`, `POST /api/webhooks/razorpay`.
-History: `GET /api/bookings`, `GET /api/bookings/:id`. Live journey: `GET /api/bookings/:id/tracking`.
-Support: `GET /api/support`. Assistant: `POST /api/jarvis`. Cancellation: `POST /api/bookings/:id/cancel`. Operations: `GET /api/admin/overview`, `POST /api/admin/trips`, `POST /api/admin/trips/:id/location`, `POST /api/admin/trips/:id/stop`, `POST /api/admin/trips/:id/resume`, `DELETE /api/admin/trips/:id`.
+History: `GET /api/bookings`, `GET /api/bookings/:id`. Live journey: `GET /api/bookings/:id/tracking`, `POST /api/bookings/:id/location`, `DELETE /api/bookings/:id/location`.
+Support: `GET /api/support`. Assistant: `POST /api/jarvis`. Cancellation: `POST /api/bookings/:id/cancel`. Operations: `GET /api/admin/overview`, `POST /api/admin/trips`, `POST /api/admin/trips/:id/stop`, `POST /api/admin/trips/:id/resume`, `DELETE /api/admin/trips/:id`.
 
 ## Scope
 
