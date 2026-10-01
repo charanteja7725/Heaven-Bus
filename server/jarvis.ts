@@ -34,7 +34,7 @@ export async function askJarvis(s: Store, message: string, context: any = {}) {
   if (/cancel/.test(text))
     return {
       reply:
-        "You can release seats before starting payment. Confirmed-ticket cancellation is not available in this demo. If payment is already in progress, the original hold deadline still applies.",
+        "Before payment, you can release your seat hold. For a confirmed ticket, cancellation gives a 100% refund at least 24 hours before departure, a 50% refund from 6 to 24 hours, and closes inside 6 hours. Open My journeys, select the ticket, and choose Cancel confirmed ticket.",
       context,
     };
   const cityPattern = `\\b(${Object.keys(aliases).join("|")})\\b`;
