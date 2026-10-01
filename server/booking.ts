@@ -1,6 +1,23 @@
 import { randomUUID } from "node:crypto";
 import { type ClientSession } from "mongodb";
 import { AppError, col, now, transaction, type Store } from "./db.js";
+
+export type PassengerGender = "MALE" | "FEMALE" | "OTHER";
+
+function adjacentSeatId(seatId: string) {
+  const match = seatId.match(/^(\d+)([ABCD])$/);
+  if (!match) return null;
+  const partner: Record<string, string> = { A: "B", B: "A", C: "D", D: "C" };
+  return `${match[1]}${partner[match[2]]}`;
+}
+
+function genderName(gender: PassengerGender) {
+  return gender === "FEMALE"
+    ? "female"
+    : gender === "MALE"
+      ? "male"
+      : "other-gender";
+}
 export async function event(s: Store, session: ClientSession, tripId: string) {
   await col(s, "outbox").insertOne(
     { _id: randomUUID(), tripId, createdAt: new Date(), sentAt: null },
@@ -22,7 +39,12 @@ async function expire(
   await col(s, "seats").updateMany(
     { holdId: h._id, state: "HELD" },
     {
-      $set: { state: "AVAILABLE", holdId: null, expiresAt: null },
+      $set: {
+        state: "AVAILABLE",
+        holdId: null,
+        expiresAt: null,
+        gender: null,
+      },
       $inc: { version: 1 },
     },
     { session },
@@ -48,10 +70,32 @@ export async function selectSeats(
   tripId: string,
   seatIds: string[],
   key: string,
+  requestedSeatGenders?: Record<string, PassengerGender>,
 ) {
   return transaction(s, async (session) => {
+    const seatGenders: Record<string, PassengerGender> =
+      requestedSeatGenders ??
+      Object.fromEntries(seatIds.map((seatId) => [seatId, "MALE"]));
+    if (
+      seatIds.some(
+        (seatId) =>
+          !["MALE", "FEMALE", "OTHER"].includes(seatGenders[seatId]),
+      ) ||
+      Object.keys(seatGenders).some((seatId) => !seatIds.includes(seatId))
+    )
+      throw new AppError(
+        400,
+        "Choose a valid passenger gender for every selected seat.",
+        "INVALID_SEAT_GENDER",
+      );
+
     const idemId = `${userId}:hold:${key}`;
-    const hash = JSON.stringify({ tripId, seatIds: [...seatIds].sort() });
+    const hash = JSON.stringify({
+      tripId,
+      seats: [...seatIds]
+        .sort()
+        .map((seatId) => [seatId, seatGenders[seatId]]),
+    });
     const previous = await col(s, "idempotency").findOne(
       { _id: idemId },
       { session },
@@ -89,6 +133,62 @@ export async function selectSeats(
     if (!h && !seatIds.length) return { hold: null };
     if (!h && time.getTime() + s.holdMs > new Date(t.departureAt).getTime())
       throw new AppError(410, "Bookings close five minutes before departure");
+
+    const touchedSeats = new Set<string>([
+      ...(h?.seatIds ?? []),
+      ...seatIds,
+    ]);
+    const lockedPairs = new Set<string>();
+    for (const seatId of touchedSeats) {
+      const partner = adjacentSeatId(seatId);
+      if (!partner) continue;
+      const pairKey = [seatId, partner].sort().join(":");
+      if (lockedPairs.has(pairKey)) continue;
+      lockedPairs.add(pairKey);
+      await col(s, "seats").updateMany(
+        { tripId, seatId: { $in: [seatId, partner] } },
+        { $inc: { pairVersion: 1 } },
+        { session },
+      );
+    }
+
+    for (const seatId of seatIds) {
+      const gender = seatGenders[seatId];
+      const partnerId = adjacentSeatId(seatId);
+      if (!partnerId) continue;
+
+      if (seatIds.includes(partnerId)) {
+        const partnerGender = seatGenders[partnerId];
+        if (partnerGender && partnerGender !== gender)
+          throw new AppError(
+            409,
+            `Seats ${seatId} and ${partnerId} are side by side and must be assigned to passengers of the same gender.`,
+            "ADJACENT_GENDER_CONFLICT",
+          );
+        continue;
+      }
+
+      const partner = await col(s, "seats").findOne(
+        { tripId, seatId: partnerId },
+        { session },
+      );
+      const partnerOccupied =
+        partner?.state === "BOOKED" ||
+        (partner?.state === "HELD" &&
+          partner.expiresAt &&
+          partner.expiresAt > time);
+      if (
+        partnerOccupied &&
+        partner.gender &&
+        partner.gender !== gender
+      )
+        throw new AppError(
+          409,
+          `Seat ${seatId} can only be booked for a ${genderName(partner.gender)} passenger because adjacent seat ${partnerId} is already occupied.`,
+          "ADJACENT_GENDER_RESTRICTED",
+        );
+    }
+
     const id = h?._id ?? randomUUID();
     const deadline = h?.expiresAt ?? new Date(time.getTime() + s.holdMs);
     for (const seatId of [...seatIds].sort()) {
@@ -104,7 +204,12 @@ export async function selectSeats(
       const result = await col(s, "seats").updateOne(
         { tripId, seatId, ...eligible },
         {
-          $set: { state: "HELD", holdId: id, expiresAt: deadline },
+          $set: {
+            state: "HELD",
+            holdId: id,
+            expiresAt: deadline,
+            gender: seatGenders[seatId],
+          },
           $inc: { version: 1 },
         },
         { session },
@@ -119,7 +224,12 @@ export async function selectSeats(
     await col(s, "seats").updateMany(
       { holdId: id, state: "HELD", seatId: { $nin: seatIds } },
       {
-        $set: { state: "AVAILABLE", holdId: null, expiresAt: null },
+        $set: {
+          state: "AVAILABLE",
+          holdId: null,
+          expiresAt: null,
+          gender: null,
+        },
         $inc: { version: 1 },
       },
       { session },
@@ -129,6 +239,7 @@ export async function selectSeats(
       userId,
       tripId,
       seatIds,
+      seatGenders,
       expiresAt: deadline,
       createdAt: h?.createdAt ?? time,
       state: seatIds.length ? "ACTIVE" : "CANCELLED",
@@ -157,13 +268,21 @@ export async function snapshot(s: Store, tripId: string, userId?: string) {
   ]);
   return {
     serverNow: time,
-    seats: seats.map((x) => ({
-      seatId: x.seatId,
-      version: x.version,
-      expiresAt: x.expiresAt,
-      state: x.state === "HELD" && x.expiresAt <= time ? "AVAILABLE" : x.state,
-      mine: x.holdId === h?._id && x.expiresAt > time,
-    })),
+    seats: seats.map((x) => {
+      const state =
+        x.state === "HELD" && x.expiresAt <= time ? "AVAILABLE" : x.state;
+      return {
+        seatId: x.seatId,
+        version: x.version,
+        expiresAt: x.expiresAt,
+        state,
+        gender: state === "AVAILABLE" ? null : (x.gender ?? null),
+        mine:
+          x.holdId === h?._id &&
+          x.expiresAt &&
+          x.expiresAt > time,
+      };
+    }),
     hold: h && h.expiresAt > time ? h : null,
   };
 }
@@ -198,9 +317,32 @@ export async function startPayment(
       );
     if (passengers.length !== h.seatIds.length)
       throw new AppError(400, "Enter details for every passenger.");
+
+    const normalizedPassengers = passengers.map((passenger, index) => {
+      const seatId = h.seatIds[index];
+      const lockedGender = h.seatGenders?.[seatId] as
+        | PassengerGender
+        | undefined;
+      const providedGender = passenger.gender as PassengerGender | undefined;
+      const gender = providedGender ?? lockedGender;
+      if (!gender || (lockedGender && gender !== lockedGender))
+        throw new AppError(
+          409,
+          `Passenger gender for seat ${seatId} must match the gender selected with that seat.`,
+          "PASSENGER_GENDER_MISMATCH",
+        );
+      return { ...passenger, gender };
+    });
+
     await col(s, "holds").updateOne(
       { _id: holdId, state: "ACTIVE" },
-      { $set: { state: "PAYMENT_PENDING", passengers, contact } },
+      {
+        $set: {
+          state: "PAYMENT_PENDING",
+          passengers: normalizedPassengers,
+          contact,
+        },
+      },
       { session },
     );
     const order = {
@@ -443,6 +585,7 @@ export async function cancelBooking(
           bookingId: null,
           holdId: null,
           expiresAt: null,
+          gender: null,
         },
         $inc: { version: 1 },
       },
