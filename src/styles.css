@@ -4681,3 +4681,286 @@ select:focus-visible {
 .seat-legend i.restricted {
   box-shadow: inset 0 0 0 1px rgba(255,255,255,.28);
 }
+
+
+/* Family booking ---------------------------------------------------------- */
+.family-booking-card {
+  margin: 22px 0 12px;
+  padding: 15px 16px;
+  border: 1px solid color-mix(in srgb, var(--primary) 24%, var(--border));
+  border-radius: 14px;
+  background:
+    linear-gradient(
+      135deg,
+      color-mix(in srgb, var(--primary-soft) 78%, var(--surface)),
+      var(--surface)
+    );
+}
+
+.family-booking-toggle {
+  display: flex;
+  align-items: flex-start;
+  gap: 11px;
+  cursor: pointer;
+}
+
+.family-booking-toggle input {
+  width: 18px;
+  height: 18px;
+  margin-top: 1px;
+  flex: 0 0 auto;
+  accent-color: var(--primary);
+}
+
+.family-booking-toggle span {
+  display: grid;
+  gap: 3px;
+}
+
+.family-booking-toggle strong {
+  color: var(--text-strong);
+  font-size: 12px;
+}
+
+.family-booking-toggle small,
+.family-booking-card > p {
+  color: var(--muted);
+  font-size: 9px;
+  line-height: 1.5;
+}
+
+.family-booking-card > p {
+  margin: 9px 0 0 29px;
+}
+
+.family-summary-chip {
+  margin: 12px 0 2px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  color: var(--primary);
+  background: var(--primary-soft);
+  border: 1px solid color-mix(in srgb, var(--primary) 18%, var(--border));
+  font-size: 9px;
+  font-weight: 700;
+  line-height: 1.45;
+}
+
+/* Map-style route autocomplete ------------------------------------------- */
+.search-form {
+  overflow: visible;
+}
+
+.location-field {
+  position: relative;
+  z-index: 4;
+}
+
+.location-field:focus-within {
+  z-index: 30;
+}
+
+.location-input-wrap {
+  min-width: 0;
+  width: 100%;
+}
+
+.location-input-line {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.location-input-line > svg {
+  flex: 0 0 auto;
+  color: var(--muted-2);
+}
+
+.location-input-line input {
+  width: 100%;
+  min-width: 0;
+  padding: 2px 0;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  background: transparent;
+  color: var(--text-strong);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.location-input-line input:focus {
+  border: 0;
+  box-shadow: none;
+  outline: 0;
+}
+
+.location-input-line input::placeholder {
+  font-weight: 600;
+  color: var(--muted-2);
+}
+
+.location-suggestions {
+  position: absolute;
+  top: calc(100% + 9px);
+  left: 0;
+  min-width: min(330px, 82vw);
+  width: max(100%, 285px);
+  padding: 7px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--glass-strong);
+  box-shadow: var(--shadow-lg);
+  backdrop-filter: blur(20px);
+  z-index: 100;
+}
+
+.location-suggestions-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 9px 8px;
+  color: var(--muted);
+  font-size: 8px;
+  font-weight: 800;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+
+.location-suggestions > button {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--text);
+  text-align: left;
+}
+
+.location-suggestions > button:hover,
+.location-suggestions > button.active {
+  background: var(--surface-2);
+}
+
+.location-result-icon {
+  width: 31px;
+  height: 31px;
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  border-radius: 9px;
+  color: var(--primary);
+  background: var(--primary-soft);
+}
+
+.location-suggestions > button > span:last-child {
+  display: grid;
+  gap: 2px;
+}
+
+.location-suggestions strong {
+  color: var(--text-strong);
+  font-size: 11px;
+}
+
+.location-suggestions small {
+  color: var(--muted);
+  font-size: 8px;
+}
+
+.location-suggestions > p {
+  margin: 4px;
+  padding: 12px;
+  color: var(--muted);
+  font-size: 10px;
+  text-align: center;
+}
+
+/* Admin trip finder ------------------------------------------------------- */
+.admin-trips-heading {
+  align-items: flex-end;
+}
+
+.admin-trip-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: min(520px, 52vw);
+}
+
+.admin-trip-search > label {
+  min-height: 42px;
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 11px;
+  border: 1px solid var(--border);
+  border-radius: 11px;
+  background: var(--surface);
+  color: var(--muted);
+}
+
+.admin-trip-search input {
+  min-width: 0;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.admin-trip-search input:focus {
+  border: 0;
+  box-shadow: none;
+}
+
+.admin-trip-search select {
+  min-height: 42px;
+  padding: 0 30px 0 11px;
+  border-radius: 11px;
+}
+
+.admin-created-badge {
+  width: fit-content;
+  margin-top: 5px;
+  padding: 3px 6px;
+  border-radius: 999px;
+  color: var(--primary);
+  background: var(--primary-soft);
+  border: 1px solid color-mix(in srgb, var(--primary) 16%, var(--border));
+  font-size: 7px;
+  font-weight: 800;
+  letter-spacing: .05em;
+  text-transform: uppercase;
+}
+
+@media (max-width: 900px) {
+  .admin-trips-heading {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .admin-trip-search {
+    width: 100%;
+    min-width: 0;
+  }
+}
+
+@media (max-width: 760px) {
+  .location-suggestions {
+    min-width: 0;
+    width: min(330px, calc(100vw - 42px));
+  }
+
+  .admin-trip-search {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .admin-trip-search select {
+    width: 100%;
+  }
+}
