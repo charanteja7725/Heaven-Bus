@@ -4,6 +4,59 @@ test.beforeEach(async ({ page }) => {
     throw error;
   });
 });
+test("home route search autocompletes available locations", async ({ page }) => {
+  await page.goto("/");
+  const from = page.getByLabel("Departure location");
+  await from.fill("Beng");
+  await expect(page.getByRole("option", { name: /Bengaluru/ }).first()).toBeVisible();
+  await page.getByRole("option", { name: /Bengaluru/ }).first().click();
+  await expect(from).toHaveValue("Bengaluru");
+
+  const to = page.getByLabel("Destination location");
+  await to.fill("Chen");
+  await expect(page.getByRole("option", { name: /Chennai/ }).first()).toBeVisible();
+  await page.getByRole("option", { name: /Chennai/ }).first().click();
+  await expect(to).toHaveValue("Chennai");
+});
+
+test("family booking allows mixed-gender passengers in one adjacent pair", async ({
+  page,
+}) => {
+  const response = await page.request.post("/api/auth/register", {
+    data: {
+      name: "Family Tester",
+      email: `family-${Date.now()}@example.test`,
+      password: "Family-test-password-2026",
+    },
+  });
+  expect(response.ok()).toBe(true);
+  const { token } = await response.json();
+  const tomorrow = new Date(Date.now() + 86400000).toLocaleDateString("en-CA", {
+    timeZone: "Asia/Kolkata",
+  });
+  await page.goto("/");
+  await page.evaluate(
+    (value) => sessionStorage.setItem("hb-token", value),
+    token,
+  );
+  await page.goto(`/search?from=Bengaluru&to=Chennai&date=${tomorrow}`);
+  await page.getByRole("link", { name: "Choose seats" }).first().click();
+
+  await page.getByLabel("Family booking").check();
+  await page.getByRole("button", { name: "Female", exact: true }).click();
+  await page
+    .getByRole("button", { name: "Seat 10C, available", exact: true })
+    .click();
+  await page.getByRole("button", { name: "Male", exact: true }).click();
+  await page
+    .getByRole("button", { name: "Seat 10D, available", exact: true })
+    .click();
+
+  await expect(page.getByText("10C · Female")).toBeVisible();
+  await expect(page.getByText("10D · Male")).toBeVisible();
+  await expect(page.getByText(/Family booking · mixed genders/)).toBeVisible();
+});
+
 test("passenger registers, searches, holds, pays and prints a persistent ticket", async ({
   page,
 }) => {
@@ -78,6 +131,7 @@ test("admin sees operations and can publish a trip", async ({ page }) => {
     page.getByRole("heading", { name: "Keep every journey moving." }),
   ).toBeVisible();
   await page.getByRole("button", { name: "Create trip" }).click();
+  await page.getByLabel("Bus name").fill("Searchable QA Express");
   await page.getByLabel("Origin", { exact: true }).fill("Bengaluru");
   await page.getByLabel("Destination", { exact: true }).fill("Chennai");
   const date = new Date(Date.now() + 3 * 86400000).toISOString().slice(0, 16);
@@ -86,6 +140,10 @@ test("admin sees operations and can publish a trip", async ({ page }) => {
   await page.getByLabel("Fare in rupees").fill("800");
   await page.getByRole("button", { name: "Publish departure" }).click();
   await expect(page.getByRole("status")).toContainText("Trip published");
+  await page.getByRole("tab", { name: "trips" }).click();
+  await page.getByLabel("Search created trips").fill("Searchable QA");
+  await expect(page.getByText("Searchable QA Express")).toBeVisible();
+  await expect(page.getByText("Created here")).toBeVisible();
 });
 test("mobile landing page has no horizontal overflow", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
