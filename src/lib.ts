@@ -77,6 +77,7 @@ export type Hold = {
   tripId: string;
   seatIds: string[];
   seatGenders?: Record<string, PassengerGender>;
+  familyBooking?: boolean;
   expiresAt: string;
   amount: number;
   state: string;
