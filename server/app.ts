@@ -23,6 +23,12 @@ import {
   type PaymentConfig,
 } from "./payments.js";
 import { askJarvis } from "./jarvis.js";
+import { supportDirectory, supportDisclaimer } from "./support.js";
+import {
+  cityCoordinates,
+  getTripTracking,
+  recordTripLocation,
+} from "./tracking.js";
 export type Config = {
   secret: string;
   origins: string[];
@@ -197,6 +203,9 @@ export function createApp(getStore: () => Store | null, c: Config) {
     });
   });
   app.get("/api/auth/me", auth, (_q, r) => r.json(r.locals.user));
+  app.get("/api/support", (_q, r) =>
+    r.json({ contacts: supportDirectory, disclaimer: supportDisclaimer }),
+  );
   app.get("/api/locations", async (_q, r) => {
     const s = store();
     const filter = {
@@ -329,6 +338,10 @@ export function createApp(getStore: () => Store | null, c: Config) {
           .min(1)
           .max(6),
         contact: z.string().regex(/^\+?[0-9]{10,15}$/),
+        notificationEmail: z
+          .email()
+          .max(200)
+          .transform((value) => value.toLowerCase()),
       })
       .parse(q.body);
     const order = await startPayment(
@@ -338,6 +351,7 @@ export function createApp(getStore: () => Store | null, c: Config) {
       input.passengers,
       input.contact,
       c.payment.mode,
+      input.notificationEmail,
     );
     const result = await createOrder(store(), c.payment, order);
     r.json({ ...result, keyId: c.payment.keyId });
@@ -417,6 +431,28 @@ export function createApp(getStore: () => Store | null, c: Config) {
       }),
     });
   });
+  app.get("/api/bookings/:id/tracking", auth, async (q, r) => {
+    const s = store();
+    const booking = await col(s, "bookings").findOne({
+      _id: String(q.params.id),
+      userId: r.locals.user._id,
+    });
+    if (!booking) throw new AppError(404, "Booking not found");
+    if (booking.status !== "CONFIRMED")
+      throw new AppError(409, "Live tracking is available only for confirmed journeys.");
+    r.json({
+      booking: {
+        _id: booking._id,
+        reference: booking.reference,
+        seatIds: booking.seatIds,
+        notificationEmail: booking.notificationEmail ?? "",
+      },
+      tracking: await getTripTracking(s, booking.trip._id),
+      support: supportDirectory,
+      supportDisclaimer,
+    });
+  });
+
   app.post("/api/bookings/:id/cancel", auth, async (q, r) => {
     r.json(
       await cancelBooking(
@@ -511,6 +547,27 @@ export function createApp(getStore: () => Store | null, c: Config) {
       serverNow: time,
     });
   });
+  app.post("/api/admin/trips/:id/location", auth, admin, async (q, r) => {
+    const input = z
+      .object({
+        lat: z.number().min(-90).max(90),
+        lng: z.number().min(-180).max(180),
+        accuracy: z.number().nonnegative().max(5000).optional(),
+        speedKph: z.number().nonnegative().max(250).optional(),
+        heading: z.number().min(0).max(360).optional(),
+        label: z.string().trim().max(120).optional(),
+      })
+      .parse(q.body);
+    r.json(
+      await recordTripLocation(
+        store(),
+        String(q.params.id),
+        r.locals.user._id,
+        input,
+      ),
+    );
+  });
+
   app.post("/api/admin/refunds/:id/approve", auth, admin, async (q, r) => {
     r.json(
       await sReviewRefund(
@@ -592,6 +649,8 @@ export function createApp(getStore: () => Store | null, c: Config) {
         type: "AC Seater",
         seats: 40,
         amenities: ["Air conditioning", "Charging port"],
+        originLocation: cityCoordinates[input.from] ?? null,
+        destinationLocation: cityCoordinates[input.to] ?? null,
         demo: true,
         source: "ADMIN",
         createdBy: r.locals.user._id,
