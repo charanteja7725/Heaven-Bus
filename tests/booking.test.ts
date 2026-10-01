@@ -240,8 +240,43 @@ describe("database-enforced booking safety", () => {
         "mixed-pair-key",
         { "1C": "FEMALE", "1D": "MALE" },
       ),
-    ).rejects.toThrow("same gender");
+    ).rejects.toThrow("Family booking");
     expect(await col(s, "holds").countDocuments({ active: true })).toBe(0);
+  });
+
+  it("allows mixed genders side by side inside the same family booking", async () => {
+    const family = await selectSeats(
+      s,
+      "family-user",
+      tripId,
+      ["1A", "1B"],
+      "family-pair-key",
+      { "1A": "FEMALE", "1B": "MALE" },
+      true,
+    );
+    expect(family.hold.familyBooking).toBe(true);
+    expect(family.hold.seatGenders["1A"]).toBe("FEMALE");
+    expect(family.hold.seatGenders["1B"]).toBe("MALE");
+
+    await startPayment(
+      s,
+      "family-user",
+      family.hold._id,
+      [
+        { name: "Family Member One", age: 30, gender: "FEMALE" },
+        { name: "Family Member Two", age: 32, gender: "MALE" },
+      ],
+      "9876543210",
+      "sandbox",
+    );
+    const confirmed = await finalize(
+      s,
+      family.hold._id,
+      "pay-family-pair",
+      family.hold.amount,
+      "INR",
+    );
+    expect(confirmed.booking.familyBooking).toBe(true);
   });
 
   it("keeps the original deadline and replays idempotent selection", async () => {
@@ -549,6 +584,48 @@ describe("API and assistant", () => {
     const refund = await col(s, "refunds").findOne({ _id: "pay-api-reject" });
     expect(refund!.status).toBe("REJECTED");
     expect(refund!.rejectionReason).toContain("Manual review");
+  });
+
+  it("searches admin-created trips and exposes their locations publicly", async () => {
+    const app = createApp(() => s, cfg);
+    const signup = await request(app).post("/api/auth/register").send({
+      name: "Trip Search Admin",
+      email: "trip-search-admin@example.test",
+      password: "test-password-123",
+    });
+    await col(s, "users").updateOne(
+      { _id: signup.body.user._id },
+      { $set: { role: "admin" } },
+    );
+    const token = signup.body.token;
+    const departureAt = new Date(Date.now() + 3 * 86400000).toISOString();
+
+    const created = await request(app)
+      .post("/api/admin/trips")
+      .set("Authorization", `Bearer ${token}`)
+      .send({
+        from: "Coimbatore Central Bus Stand",
+        to: "Chennai Koyambedu",
+        departureAt,
+        duration: 7,
+        fare: 85000,
+        name: "Family Search Express",
+      });
+    expect(created.status).toBe(201);
+    expect(created.body.source).toBe("ADMIN");
+
+    const search = await request(app)
+      .get("/api/admin/trips?q=Family%20Search")
+      .set("Authorization", `Bearer ${token}`);
+    expect(search.status).toBe(200);
+    expect(search.body.some((trip: any) => trip._id === created.body._id)).toBe(
+      true,
+    );
+
+    const locations = await request(app).get("/api/locations");
+    expect(locations.status).toBe(200);
+    expect(locations.body.locations).toContain("Coimbatore Central Bus Stand");
+    expect(locations.body.locations).toContain("Chennai Koyambedu");
   });
 
   it("lets an administrator stop, resume and remove an unsold trip", async () => {
