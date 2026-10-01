@@ -71,6 +71,7 @@ export async function selectSeats(
   seatIds: string[],
   key: string,
   requestedSeatGenders?: Record<string, PassengerGender>,
+  familyBooking = false,
 ) {
   return transaction(s, async (session) => {
     const seatGenders: Record<string, PassengerGender> =
@@ -95,6 +96,7 @@ export async function selectSeats(
       seats: [...seatIds]
         .sort()
         .map((seatId) => [seatId, seatGenders[seatId]]),
+      familyBooking,
     });
     const previous = await col(s, "idempotency").findOne(
       { _id: idemId },
@@ -159,10 +161,10 @@ export async function selectSeats(
 
       if (seatIds.includes(partnerId)) {
         const partnerGender = seatGenders[partnerId];
-        if (partnerGender && partnerGender !== gender)
+        if (partnerGender && partnerGender !== gender && !familyBooking)
           throw new AppError(
             409,
-            `Seats ${seatId} and ${partnerId} are side by side and must be assigned to passengers of the same gender.`,
+            `Seats ${seatId} and ${partnerId} are side by side. Choose Family booking to seat different genders together in the same reservation.`,
             "ADJACENT_GENDER_CONFLICT",
           );
         continue;
@@ -240,6 +242,7 @@ export async function selectSeats(
       tripId,
       seatIds,
       seatGenders,
+      familyBooking,
       expiresAt: deadline,
       createdAt: h?.createdAt ?? time,
       state: seatIds.length ? "ACTIVE" : "CANCELLED",
@@ -460,6 +463,7 @@ export async function finalize(
       seatIds: h.seatIds,
       passengers: h.passengers,
       contact: h.contact,
+      familyBooking: !!h.familyBooking,
       amount,
       status: "CONFIRMED",
       reference: `HB-${randomUUID().slice(0, 8).toUpperCase()}`,
