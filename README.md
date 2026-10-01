@@ -4,9 +4,10 @@ A bus booking application for PS-07, Bus Seat Vanishing Act. React + TypeScript 
 
 ## Features
 
-- Passenger route search, live seat map, fixed five-minute holds, up to six seats, passenger details, checkout, history, printable tickets, and confirmed-ticket cancellation with time-based refunds.
-- Admin operations dashboard: bookings, active holds, scheduled trips, create departure, refunds and payment exceptions.
-- Ask Jarvis: conversational route search with follow-up context, dates, budget and evening filters, hold/refund guidance and optional browser voice input. Uses a deterministic parser and database queries, not an external LLM; it never invents trip inventory or books without confirmation.
+- Passenger route search, live seat map, fixed five-minute holds, up to six seats, family mixed-gender seating, passenger details, checkout, history, printable tickets, confirmed-ticket cancellation with time-based refunds, and live journey tracking from origin to destination.
+- Admin operations dashboard: bookings, active holds, searchable scheduled trips, create departure, refunds, payment exceptions, and phone GPS broadcast for a running bus.
+- Ask Jarvis: conversational route search with follow-up context, dates, budget and evening filters, hold/refund guidance, optional browser voice input, and issue-specific responsible support contacts for refunds, seat quality, rash driving, delays, cleaning, electricity/charging, toilets, safety, harassment, medical emergencies, luggage, boarding, AC, accessibility, tracking and staff conduct. Uses a deterministic parser and database queries, not an external LLM; it never invents trip inventory or books without confirmation.
+- Journey-day email reminders: checkout collects a notification email, confirmed bookings retain it, and a background worker sends the passenger a same-day reminder and live-tracking link when a Resend sender is configured.
 - Clearly labelled sandbox payment mode, plus Razorpay checkout, server verification, signed webhook inbox, recovery and compensating refunds.
 
 This is a demonstration platform. Schedules are seeded examples and tickets are not valid for travel. Sandbox payment mode never charges money. Razorpay must be configured with **test keys** for this project.
@@ -47,6 +48,9 @@ npm run admin -- your@email.com
 | RAZORPAY_KEY_SECRET     | Render secret | Provider test key secret                              |
 | RAZORPAY_WEBHOOK_SECRET | Render secret | Verify raw signed webhook bodies                      |
 | VITE_API_URL            | Vercel        | Render API origin, without /api suffix                |
+| RESEND_API_KEY           | Render secret | Resend API key for journey-day reminder email         |
+| JOURNEY_EMAIL_FROM       | Render        | Verified sender, e.g. HEAVEN-BUS <journeys@domain>    |
+| PUBLIC_APP_URL           | Render        | Public Vercel origin used in email tracking links     |
 
 ## Deploy
 
@@ -55,6 +59,7 @@ npm run admin -- your@email.com
 3. Put the resulting Vercel origin in Render `FRONTEND_URL`. Use exact origins, not wildcard credentials.
 4. Atlas: create a dedicated database user and permit the Render service's published outbound IP ranges. Use an Atlas deployment supporting replica-set transactions. Keep credentials out of source control.
 5. With Razorpay Test Mode, subscribe the webhook `/api/webhooks/razorpay` to relevant payment events and configure the matching webhook secret. Enable automatic capture in the provider dashboard. Without captured status, the system never confirms a ticket.
+6. For real journey-day email delivery, create a Resend API key, verify the sender used by `JOURNEY_EMAIL_FROM`, and set `PUBLIC_APP_URL` to the Vercel app. Without those email variables, bookings and reminder status are still stored but no external email is falsely marked as sent.
 
 No database credential means the API remains reachable for health checks but reports `setup_required` and rejects booking operations. It never silently swaps MongoDB for browser or memory storage.
 
@@ -87,9 +92,9 @@ Auth: `POST /api/auth/register`, `POST /api/auth/login`, `GET /api/auth/me`.
 Inventory: `GET /api/trips`, `GET /api/trips/:id`, `GET /api/trips/:id/seats`.
 Reservations: `POST /api/holds` (Idempotency-Key required), `GET /api/holds/current`, `GET/DELETE /api/holds/:id`.
 Payment: `POST /api/holds/:id/payment`, `POST /api/holds/:id/sandbox-pay`, `POST /api/holds/:id/verify`, `POST /api/webhooks/razorpay`.
-History: `GET /api/bookings`, `GET /api/bookings/:id`.
-Assistant: `POST /api/jarvis`. Cancellation: `POST /api/bookings/:id/cancel`. Operations: `GET /api/admin/overview`, `POST /api/admin/trips`, `POST /api/admin/trips/:id/stop`, `POST /api/admin/trips/:id/resume`, `DELETE /api/admin/trips/:id`.
+History: `GET /api/bookings`, `GET /api/bookings/:id`. Live journey: `GET /api/bookings/:id/tracking`.
+Support: `GET /api/support`. Assistant: `POST /api/jarvis`. Cancellation: `POST /api/bookings/:id/cancel`. Operations: `GET /api/admin/overview`, `POST /api/admin/trips`, `POST /api/admin/trips/:id/location`, `POST /api/admin/trips/:id/stop`, `POST /api/admin/trips/:id/resume`, `DELETE /api/admin/trips/:id`.
 
 ## Scope
 
-Full-route seated trips, INR, IST display, fixed five-minute holds, and confirmed-ticket cancellation (100% refund ≥24h, 50% from 6–24h, closed <6h). No operator integration, sleeper/segment inventory or real-money launch. Access tokens use sessionStorage and expire after eight hours. Add stronger session management, email verification, abuse controls, retention rules, external observability and operational support before a commercial launch.
+Full-route seated trips, INR, IST display, fixed five-minute holds, live GPS journey tracking, journey-day email reminders, and confirmed-ticket cancellation (100% refund ≥24h, 50% from 6–24h, closed <6h). No operator integration, sleeper/segment inventory or real-money launch. Access tokens use sessionStorage and expire after eight hours. Add stronger session management, email verification, abuse controls, retention rules, external observability and operational support before a commercial launch.
