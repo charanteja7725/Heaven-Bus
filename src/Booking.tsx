@@ -23,6 +23,7 @@ import {
   Printer,
   RefreshCw,
   AlertCircle,
+  XCircle,
 } from "lucide-react";
 import {
   API,
@@ -925,9 +926,13 @@ export function BookingsPage() {
               {data.bookings.map((b: any) => (
                 <article className="journey-card" key={b._id}>
                   <div className="journey-card-top">
-                    <span className="status success">
-                      <Check size={14} />
-                      Confirmed
+                    <span className={`status ${b.status === "CANCELLED" ? "" : "success"}`}>
+                      {b.status === "CANCELLED" ? (
+                        <XCircle size={14} />
+                      ) : (
+                        <Check size={14} />
+                      )}
+                      {b.status === "CANCELLED" ? "Cancelled" : "Confirmed"}
                     </span>
                     <small>{b.reference}</small>
                   </div>
@@ -945,8 +950,13 @@ export function BookingsPage() {
                     </span>
                     <strong>{money(b.amount)}</strong>
                   </div>
+                  {b.status === "CONFIRMED" && b.cancellation?.allowed && (
+                    <p className="muted small-text">
+                      Cancel now for a {b.cancellation.refundPercent}% refund.
+                    </p>
+                  )}
                   <Link className="text-link" to={`/ticket/${b._id}`}>
-                    View your ticket <ArrowUpRightIcon />
+                    {b.status === "CANCELLED" ? "View cancellation details" : "View your ticket"} <ArrowUpRightIcon />
                   </Link>
                 </article>
               ))}
@@ -985,12 +995,16 @@ function ArrowUpRightIcon() {
 }
 export function TicketPage() {
   const { id } = useParams();
+  const { notify } = useApp();
   const [booking, setBooking] = useState<any>(null),
-    [error, setError] = useState("");
-  useEffect(() => {
+    [error, setError] = useState(""),
+    [busy, setBusy] = useState(false);
+  const load = () =>
     api(`/bookings/${id}`)
       .then(setBooking)
       .catch((e) => setError(e.message));
+  useEffect(() => {
+    load();
   }, [id]);
   if (!booking)
     return (
@@ -1006,11 +1020,17 @@ export function TicketPage() {
     <div className="wrap page ticket-page">
       <div className="confirmation">
         <span className="confirmation-check">
-          <Check size={32} />
+          {booking.status === "CANCELLED" ? <XCircle size={32} /> : <Check size={32} />}
         </span>
-        <span className="eyebrow">YOUR SEAT IS SAVED</span>
-        <h1>You’re on your way.</h1>
-        <p>Something good is waiting at the other end.</p>
+        <span className="eyebrow">
+          {booking.status === "CANCELLED" ? "BOOKING CANCELLED" : "YOUR SEAT IS SAVED"}
+        </span>
+        <h1>{booking.status === "CANCELLED" ? "Your journey was cancelled." : "You’re on your way."}</h1>
+        <p>
+          {booking.status === "CANCELLED"
+            ? `${booking.refundPercent}% refund requested: ${money(booking.refundAmount ?? 0)}.`
+            : "Something good is waiting at the other end."}
+        </p>
       </div>
       <article className="ticket">
         <div className="ticket-header">
@@ -1018,7 +1038,9 @@ export function TicketPage() {
             <BusFront />
             <strong>HEAVEN—BUS</strong>
           </span>
-          <span className="status success">CONFIRMED</span>
+          <span className={`status ${booking.status === "CANCELLED" ? "" : "success"}`}>
+            {booking.status}
+          </span>
         </div>
         <div className="ticket-body">
           <span className="eyebrow">{booking.trip.name}</span>
@@ -1057,18 +1079,62 @@ export function TicketPage() {
         <div className="ticket-stub">
           <ShieldCheck size={19} />
           <p>
-            Demo ticket · Not valid for travel.{" "}
-            {booking.paymentMode === "sandbox"
-              ? "No real money was charged."
-              : "Payment processed through the configured test provider."}
+            {booking.status === "CANCELLED"
+              ? `Cancellation recorded. Refund: ${money(booking.refundAmount ?? 0)} (${booking.refundPercent ?? 0}%).`
+              : <>Demo ticket · Not valid for travel.{" "}
+                  {booking.paymentMode === "sandbox"
+                    ? "No real money was charged."
+                    : "Payment processed through the configured test provider."}</>}
           </p>
         </div>
       </article>
+      {booking.status === "CONFIRMED" && (
+        <section className="panel" style={{ marginTop: 20 }}>
+          <h2>Cancellation policy</h2>
+          <p className="muted">
+            100% refund at least 24 hours before departure · 50% refund from 6–24 hours · cancellation closes inside 6 hours.
+          </p>
+          {booking.cancellation?.allowed ? (
+            <>
+              <p>
+                If you cancel now, your refund will be <strong>{money(booking.cancellation.refundAmount)}</strong> ({booking.cancellation.refundPercent}%).
+              </p>
+              <button
+                className="button button-outline"
+                disabled={busy}
+                onClick={async () => {
+                  const ok = window.confirm(
+                    `Cancel this confirmed ticket? Refund: ${money(booking.cancellation.refundAmount)} (${booking.cancellation.refundPercent}%). This cannot be undone.`,
+                  );
+                  if (!ok) return;
+                  setBusy(true);
+                  try {
+                    const result = await api(`/bookings/${id}/cancel`, { method: "POST" });
+                    notify(`Booking cancelled. Refund requested: ${money(result.refundAmount)}.`);
+                    await load();
+                  } catch (e) {
+                    setError((e as Error).message);
+                  } finally {
+                    setBusy(false);
+                  }
+                }}
+              >
+                <XCircle size={17} />
+                {busy ? "Cancelling…" : "Cancel confirmed ticket"}
+              </button>
+            </>
+          ) : (
+            <p className="muted">{booking.cancellation?.reason}</p>
+          )}
+        </section>
+      )}
       <div className="ticket-actions">
-        <button className="button button-dark" onClick={() => window.print()}>
-          <Printer size={17} />
-          Print ticket
-        </button>
+        {booking.status === "CONFIRMED" && (
+          <button className="button button-dark" onClick={() => window.print()}>
+            <Printer size={17} />
+            Print ticket
+          </button>
+        )}
         <Link to="/bookings" className="button button-outline">
           My journeys <ArrowRight size={17} />
         </Link>
