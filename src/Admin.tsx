@@ -13,6 +13,9 @@ import {
   Ban,
   Play,
   Trash2,
+  CheckCircle2,
+  XCircle,
+  CircleDollarSign,
 } from "lucide-react";
 import { api, money, time, dateLabel } from "./lib";
 import { useApp } from "./App";
@@ -24,7 +27,8 @@ export default function Admin() {
     [tab, setTab] = useState("bookings"),
     [create, setCreate] = useState(false),
     [busy, setBusy] = useState(false),
-    [tripBusy, setTripBusy] = useState("");
+    [tripBusy, setTripBusy] = useState(""),
+    [refundBusy, setRefundBusy] = useState("");
   const load = () =>
     api("/admin/overview")
       .then((d) => {
@@ -67,6 +71,42 @@ export default function Admin() {
       setTripBusy("");
     }
   }
+  async function manageRefund(
+    refundId: string,
+    action: "approve" | "reject",
+  ) {
+    let body: string | undefined;
+    if (action === "approve") {
+      if (!window.confirm("Approve this refund request? The refund will move to processing."))
+        return;
+    } else {
+      const reason = window.prompt(
+        "Reason for rejecting this refund request:",
+        "Refund request does not meet approval requirements.",
+      );
+      if (!reason?.trim()) return;
+      body = JSON.stringify({ reason: reason.trim() });
+    }
+
+    setRefundBusy(`${refundId}:${action}`);
+    try {
+      await api(
+        `/admin/refunds/${encodeURIComponent(refundId)}/${action}`,
+        { method: "POST", body },
+      );
+      notify(
+        action === "approve"
+          ? "Refund approved and queued for processing."
+          : "Refund request rejected.",
+      );
+      await load();
+    } catch (e) {
+      notify((e as Error).message);
+    } finally {
+      setRefundBusy("");
+    }
+  }
+
   useEffect(() => {
     if (user?.role === "admin") {
       load();
@@ -122,6 +162,16 @@ export default function Admin() {
             label: "Registered travellers",
             value: data?.users ?? "—",
             icon: Users,
+          },
+          {
+            label: "Refund approvals",
+            value:
+              data?.refunds.filter(
+                (r: any) =>
+                  r.reason === "PASSENGER_CANCELLATION" &&
+                  r.status === "PENDING_APPROVAL",
+              ).length ?? "—",
+            icon: CircleDollarSign,
           },
         ].map((x) => (
           <article key={x.label}>
@@ -368,33 +418,130 @@ export default function Admin() {
           </>
         ) : tab === "refunds" ? (
           <>
-            <h2>Refund recovery</h2>
+            <div className="admin-section-heading">
+              <div>
+                <h2>Refund approvals</h2>
+                <p className="muted small-text">
+                  Passenger cancellation refunds require an administrator decision.
+                  Payment-safety refunds continue automatically.
+                </p>
+              </div>
+            </div>
             <table>
               <thead>
                 <tr>
-                  <th>Payment</th>
+                  <th>Booking</th>
+                  <th>Traveller</th>
+                  <th>Route</th>
                   <th>Amount</th>
+                  <th>Type</th>
                   <th>Status</th>
-                  <th>Attempts</th>
+                  <th>Requested</th>
+                  <th>Decision</th>
                 </tr>
               </thead>
               <tbody>
-                {data.refunds.map((r: any) => (
-                  <tr key={r._id}>
-                    <td>{r._id.slice(0, 24)}</td>
-                    <td>{money(r.amount)}</td>
-                    <td>
-                      <span className="status">{r.status}</span>
-                    </td>
-                    <td>{r.attempts}</td>
-                  </tr>
-                ))}
+                {data.refunds.map((r: any) => {
+                  const passengerRefund =
+                    r.reason === "PASSENGER_CANCELLATION";
+                  const canApprove =
+                    passengerRefund &&
+                    ["PENDING_APPROVAL", "REJECTED"].includes(r.status);
+                  const canReject =
+                    passengerRefund && r.status === "PENDING_APPROVAL";
+                  return (
+                    <tr key={r._id}>
+                      <td>
+                        <strong>{r.booking?.reference ?? r._id.slice(0, 12)}</strong>
+                        {r.booking?.seatIds?.length ? (
+                          <div className="muted small-text">
+                            Seats {r.booking.seatIds.join(", ")}
+                          </div>
+                        ) : null}
+                      </td>
+                      <td>
+                        {r.traveller?.name ?? "Traveller"}
+                        <div className="muted small-text">
+                          {r.traveller?.email ?? "—"}
+                        </div>
+                      </td>
+                      <td>
+                        {r.booking?.trip
+                          ? `${r.booking.trip.from} → ${r.booking.trip.to}`
+                          : "—"}
+                      </td>
+                      <td>
+                        <strong>{money(r.amount)}</strong>
+                        {r.originalAmount && r.originalAmount !== r.amount ? (
+                          <div className="muted small-text">
+                            of {money(r.originalAmount)}
+                          </div>
+                        ) : null}
+                      </td>
+                      <td>
+                        {passengerRefund
+                          ? "Ticket cancellation"
+                          : "Payment safety"}
+                      </td>
+                      <td>
+                        <span
+                          className={`status ${r.status === "COMPLETED" ? "success" : ""}`}
+                        >
+                          {r.status === "PENDING_APPROVAL"
+                            ? "Awaiting approval"
+                            : r.status === "PENDING"
+                              ? "Approved · Processing"
+                              : r.status === "COMPLETED"
+                                ? "Refunded"
+                                : r.status === "REJECTED"
+                                  ? "Rejected"
+                                  : r.status.replaceAll("_", " ")}
+                        </span>
+                        {r.rejectionReason ? (
+                          <div className="muted small-text" style={{ marginTop: 6 }}>
+                            {r.rejectionReason}
+                          </div>
+                        ) : null}
+                      </td>
+                      <td>
+                        {dateLabel(r.requestedAt ?? r.createdAt)}
+                      </td>
+                      <td>
+                        {passengerRefund ? (
+                          <div className="admin-trip-actions">
+                            <button
+                              className="text-link"
+                              disabled={
+                                !canApprove || refundBusy.startsWith(r._id)
+                              }
+                              onClick={() => manageRefund(r._id, "approve")}
+                            >
+                              <CheckCircle2 size={14} />
+                              {r.status === "REJECTED" ? "Reconsider" : "Approve"}
+                            </button>
+                            <button
+                              className="text-link danger-link"
+                              disabled={
+                                !canReject || refundBusy.startsWith(r._id)
+                              }
+                              onClick={() => manageRefund(r._id, "reject")}
+                            >
+                              <XCircle size={14} /> Reject
+                            </button>
+                          </div>
+                        ) : (
+                          <span className="muted small-text">
+                            Automatic safety refund
+                          </span>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
             {!data.refunds.length && (
-              <p className="table-empty">
-                No refund obligations. Recovery runs automatically.
-              </p>
+              <p className="table-empty">No refund requests right now.</p>
             )}
           </>
         ) : (
