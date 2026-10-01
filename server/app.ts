@@ -28,10 +28,12 @@ export type Config = {
   origins: string[];
   payment: PaymentConfig;
 };
+const seatIdSchema = z.string().regex(/^(?:[1-9]|10)[ABCD]$/);
 const seatSchema = z
-  .array(z.string().regex(/^(?:[1-9]|10)[ABCD]$/))
+  .array(seatIdSchema)
   .max(6)
   .refine((x) => new Set(x).size === x.length);
+const genderSchema = z.enum(["MALE", "FEMALE", "OTHER"]);
 export function createApp(getStore: () => Store | null, c: Config) {
   const app = express();
   app.set("trust proxy", 1);
@@ -233,7 +235,23 @@ export function createApp(getStore: () => Store | null, c: Config) {
   );
   app.post("/api/holds", auth, async (q, r) => {
     const input = z
-      .object({ tripId: z.string().max(180), seatIds: seatSchema })
+      .object({
+        tripId: z.string().max(180),
+        seatIds: seatSchema,
+        seatGenders: z.record(seatIdSchema, genderSchema),
+      })
+      .superRefine((value, ctx) => {
+        const keys = Object.keys(value.seatGenders);
+        if (
+          keys.length !== value.seatIds.length ||
+          value.seatIds.some((seatId) => !value.seatGenders[seatId]) ||
+          keys.some((seatId) => !value.seatIds.includes(seatId))
+        )
+          ctx.addIssue({
+            code: "custom",
+            message: "Choose a passenger gender for every selected seat.",
+          });
+      })
       .parse(q.body);
     const key = z.string().min(8).max(100).parse(q.header("Idempotency-Key"));
     r.json(
@@ -243,6 +261,7 @@ export function createApp(getStore: () => Store | null, c: Config) {
         input.tripId,
         input.seatIds,
         key,
+        input.seatGenders,
       ),
     );
   });
@@ -286,6 +305,7 @@ export function createApp(getStore: () => Store | null, c: Config) {
             z.object({
               name: z.string().trim().min(2).max(80),
               age: z.number().int().min(1).max(110),
+              gender: genderSchema,
             }),
           )
           .min(1)
@@ -653,7 +673,12 @@ async function sSetTripStatus(
           await col(s, "seats").updateMany(
             { tripId, state: "HELD" },
             {
-              $set: { state: "AVAILABLE", holdId: null, expiresAt: null },
+              $set: {
+                state: "AVAILABLE",
+                holdId: null,
+                expiresAt: null,
+                gender: null,
+              },
               $inc: { version: 1 },
             },
             { session },
