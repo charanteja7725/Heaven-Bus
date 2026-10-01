@@ -10,6 +10,9 @@ import {
   Plus,
   Activity,
   ArrowRight,
+  Ban,
+  Play,
+  Trash2,
 } from "lucide-react";
 import { api, money, time, dateLabel } from "./lib";
 import { useApp } from "./App";
@@ -20,7 +23,8 @@ export default function Admin() {
     [error, setError] = useState(""),
     [tab, setTab] = useState("bookings"),
     [create, setCreate] = useState(false),
-    [busy, setBusy] = useState(false);
+    [busy, setBusy] = useState(false),
+    [tripBusy, setTripBusy] = useState("");
   const load = () =>
     api("/admin/overview")
       .then((d) => {
@@ -28,6 +32,41 @@ export default function Admin() {
         setError("");
       })
       .catch((e) => setError(e.message));
+
+  async function manageTrip(
+    tripId: string,
+    action: "stop" | "resume" | "remove",
+  ) {
+    const messages = {
+      stop:
+        "Stop sales for this trip? Active seat holds will be released, but confirmed tickets will remain valid.",
+      resume: "Resume sales for this trip?",
+      remove:
+        "Remove this trip permanently? This is only allowed when there are no confirmed tickets or active payment/hold activity.",
+    };
+    if (!window.confirm(messages[action])) return;
+    setTripBusy(`${tripId}:${action}`);
+    try {
+      await api(
+        action === "remove"
+          ? `/admin/trips/${encodeURIComponent(tripId)}`
+          : `/admin/trips/${encodeURIComponent(tripId)}/${action}`,
+        { method: action === "remove" ? "DELETE" : "POST" },
+      );
+      notify(
+        action === "stop"
+          ? "Trip sales stopped. Existing confirmed tickets were preserved."
+          : action === "resume"
+            ? "Trip sales resumed."
+            : "Trip removed.",
+      );
+      await load();
+    } catch (e) {
+      notify((e as Error).message);
+    } finally {
+      setTripBusy("");
+    }
+  }
   useEffect(() => {
     if (user?.role === "admin") {
       load();
@@ -210,7 +249,9 @@ export default function Admin() {
                     <td>{b.seatIds.join(", ")}</td>
                     <td>{money(b.amount)}</td>
                     <td>
-                      <span className="status success">Confirmed</span>
+                      <span className={`status ${b.status === "CONFIRMED" ? "success" : ""}`}>
+                        {b.status === "CANCELLED" ? "Cancelled" : "Confirmed"}
+                      </span>
                     </td>
                   </tr>
                 ))}
@@ -263,7 +304,9 @@ export default function Admin() {
                   <th>Route</th>
                   <th>Departure</th>
                   <th>Fare</th>
+                  <th>Status</th>
                   <th>Inventory</th>
+                  <th>Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -278,12 +321,45 @@ export default function Admin() {
                     </td>
                     <td>{money(t.fare)}</td>
                     <td>
+                      <span className={`status ${t.status === "PUBLISHED" ? "success" : ""}`}>
+                        {t.status === "PUBLISHED" ? "On sale" : "Stopped"}
+                      </span>
+                    </td>
+                    <td>
                       <Link
                         to={`/trip/${encodeURIComponent(t._id)}`}
                         className="text-link"
                       >
                         View seats
                       </Link>
+                    </td>
+                    <td>
+                      <div className="admin-trip-actions">
+                        {t.status === "PUBLISHED" ? (
+                          <button
+                            className="text-link"
+                            disabled={tripBusy.startsWith(t._id)}
+                            onClick={() => manageTrip(t._id, "stop")}
+                          >
+                            <Ban size={14} /> Stop sales
+                          </button>
+                        ) : (
+                          <button
+                            className="text-link"
+                            disabled={tripBusy.startsWith(t._id)}
+                            onClick={() => manageTrip(t._id, "resume")}
+                          >
+                            <Play size={14} /> Resume
+                          </button>
+                        )}
+                        <button
+                          className="text-link"
+                          disabled={tripBusy.startsWith(t._id)}
+                          onClick={() => manageTrip(t._id, "remove")}
+                        >
+                          <Trash2 size={14} /> Remove
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}
