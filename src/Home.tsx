@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import {
   ArrowRight,
@@ -12,9 +12,130 @@ import {
   Radio,
   Leaf,
   ChevronRight,
+  Search,
 } from "lucide-react";
-import { cities, today, dateLabel } from "./lib";
+import { api, cities, today, dateLabel } from "./lib";
 import { useApp } from "./App";
+function LocationSearch({
+  label,
+  ariaLabel,
+  value,
+  onChange,
+  options,
+  exclude,
+}: {
+  label: string;
+  ariaLabel: string;
+  value: string;
+  onChange: (value: string) => void;
+  options: string[];
+  exclude?: string;
+}) {
+  const [open, setOpen] = useState(false),
+    [active, setActive] = useState(0);
+  const root = useRef<HTMLLabelElement>(null);
+  const query = value.trim().toLowerCase();
+  const suggestions = options
+    .filter(
+      (option) =>
+        option.toLowerCase() !== exclude?.trim().toLowerCase() &&
+        (!query || option.toLowerCase().includes(query)),
+    )
+    .slice(0, 8);
+
+  useEffect(() => {
+    const close = (event: MouseEvent) => {
+      if (!root.current?.contains(event.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", close);
+    return () => document.removeEventListener("mousedown", close);
+  }, []);
+
+  const choose = (option: string) => {
+    onChange(option);
+    setOpen(false);
+    setActive(0);
+  };
+
+  return (
+    <label className="location-field" ref={root}>
+      <MapPin />
+      <span className="location-input-wrap">
+        <small>{label}</small>
+        <span className="location-input-line">
+          <Search size={14} />
+          <input
+            aria-label={ariaLabel}
+            role="combobox"
+            aria-expanded={open}
+            aria-autocomplete="list"
+            autoComplete="off"
+            value={value}
+            placeholder="Search city or boarding point"
+            onFocus={() => setOpen(true)}
+            onChange={(e) => {
+              onChange(e.target.value);
+              setActive(0);
+              setOpen(true);
+            }}
+            onKeyDown={(e) => {
+              if (!open && ["ArrowDown", "ArrowUp"].includes(e.key)) {
+                setOpen(true);
+                return;
+              }
+              if (e.key === "ArrowDown") {
+                e.preventDefault();
+                setActive((index) =>
+                  Math.min(index + 1, Math.max(0, suggestions.length - 1)),
+                );
+              } else if (e.key === "ArrowUp") {
+                e.preventDefault();
+                setActive((index) => Math.max(0, index - 1));
+              } else if (e.key === "Enter" && open && suggestions[active]) {
+                e.preventDefault();
+                choose(suggestions[active]);
+              } else if (e.key === "Escape") {
+                setOpen(false);
+              }
+            }}
+          />
+        </span>
+      </span>
+      {open && (
+        <div className="location-suggestions" role="listbox">
+          <div className="location-suggestions-title">
+            <MapPin size={13} />
+            Available HEAVEN-BUS locations
+          </div>
+          {suggestions.length ? (
+            suggestions.map((option, index) => (
+              <button
+                type="button"
+                role="option"
+                aria-selected={index === active}
+                className={index === active ? "active" : ""}
+                key={option}
+                onMouseDown={(event) => event.preventDefault()}
+                onClick={() => choose(option)}
+              >
+                <span className="location-result-icon">
+                  <MapPin size={15} />
+                </span>
+                <span>
+                  <strong>{option}</strong>
+                  <small>Bus route location</small>
+                </span>
+              </button>
+            ))
+          ) : (
+            <p>No matching route location yet.</p>
+          )}
+        </div>
+      )}
+    </label>
+  );
+}
+
 export function SearchForm({
   initial = {},
 }: {
@@ -22,31 +143,58 @@ export function SearchForm({
 }) {
   const [from, setFrom] = useState(initial.from ?? "Bengaluru"),
     [to, setTo] = useState(initial.to ?? "Chennai"),
-    [date, setDate] = useState(initial.date ?? today());
+    [date, setDate] = useState(initial.date ?? today()),
+    [locations, setLocations] = useState<string[]>(cities);
   const nav = useNavigate();
+
+  useEffect(() => {
+    let alive = true;
+    api("/locations")
+      .then((result) => {
+        if (!alive) return;
+        setLocations(
+          [...new Set([...cities, ...(result.locations ?? [])])].sort((a, b) =>
+            a.localeCompare(b),
+          ),
+        );
+      })
+      .catch(() => {
+        // Static city options remain available if the API is warming up.
+      });
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  const canonical = (value: string) =>
+    locations.find(
+      (location) => location.toLowerCase() === value.trim().toLowerCase(),
+    ) ?? value.trim();
   return (
     <form
       className="search-form"
       onSubmit={(e) => {
         e.preventDefault();
-        nav(`/search?${new URLSearchParams({ from, to, date })}`);
+        const resolvedFrom = canonical(from),
+          resolvedTo = canonical(to);
+        if (!resolvedFrom || !resolvedTo || resolvedFrom === resolvedTo) return;
+        nav(
+          `/search?${new URLSearchParams({
+            from: resolvedFrom,
+            to: resolvedTo,
+            date,
+          })}`,
+        );
       }}
     >
-      <label>
-        <MapPin />
-        <span>
-          <small>FROM</small>
-          <select
-            aria-label="Departure city"
-            value={from}
-            onChange={(e) => setFrom(e.target.value)}
-          >
-            {cities.map((x) => (
-              <option key={x}>{x}</option>
-            ))}
-          </select>
-        </span>
-      </label>
+      <LocationSearch
+        label="FROM"
+        ariaLabel="Departure location"
+        value={from}
+        onChange={setFrom}
+        options={locations}
+        exclude={to}
+      />
       <button
         type="button"
         className="swap"
@@ -58,21 +206,14 @@ export function SearchForm({
       >
         <ArrowLeftRight size={17} />
       </button>
-      <label>
-        <MapPin />
-        <span>
-          <small>TO</small>
-          <select
-            aria-label="Destination city"
-            value={to}
-            onChange={(e) => setTo(e.target.value)}
-          >
-            {cities.map((x) => (
-              <option key={x}>{x}</option>
-            ))}
-          </select>
-        </span>
-      </label>
+      <LocationSearch
+        label="TO"
+        ariaLabel="Destination location"
+        value={to}
+        onChange={setTo}
+        options={locations}
+        exclude={from}
+      />
       <label className="date-field">
         <CalendarDays />
         <span>
@@ -87,7 +228,14 @@ export function SearchForm({
           />
         </span>
       </label>
-      <button className="button button-orange" disabled={from === to}>
+      <button
+        className="button button-orange"
+        disabled={
+          !from.trim() ||
+          !to.trim() ||
+          from.trim().toLowerCase() === to.trim().toLowerCase()
+        }
+      >
         Find my bus <ArrowRight size={19} />
       </button>
     </form>
