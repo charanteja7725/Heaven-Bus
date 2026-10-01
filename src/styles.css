@@ -4964,3 +4964,25 @@ select:focus-visible {
     width: 100%;
   }
 }
+
+
+/* Admin trip search sizing fix ------------------------------------------- */
+.admin-trip-search > label {
+  flex: 1 1 320px;
+  min-width: 260px;
+}
+
+.admin-trip-search > select {
+  flex: 0 0 165px;
+  width: 165px;
+  min-width: 165px;
+}
+
+@media (max-width: 760px) {
+  .admin-trip-search > label,
+  .admin-trip-search > select {
+    width: 100%;
+    min-width: 0;
+    flex: 1 1 auto;
+  }
+}
