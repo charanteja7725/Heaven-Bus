@@ -262,8 +262,9 @@ export async function getTripTracking(s: Store, tripId: string) {
   const liveAge = live?.updatedAt
     ? clock.getTime() - new Date(live.updatedAt).getTime()
     : Number.POSITIVE_INFINITY;
-  const liveFresh = liveAge <= FRESH_PASSENGER_MS;
-  const liveStale = liveAge <= STALE_PASSENGER_MS;
+  const passengerAggregate = live?.source === "PASSENGER_CROWD_GPS";
+  const liveFresh = passengerAggregate && liveAge <= FRESH_PASSENGER_MS;
+  const liveStale = passengerAggregate && liveAge <= STALE_PASSENGER_MS;
   const window = shareWindow(trip, clock);
 
   let location: any = null;
