@@ -28,7 +28,8 @@ import { createHmac } from "node:crypto";
 import { seed } from "../server/seed";
 import {
   getTripTracking,
-  recordTripLocation,
+  recordPassengerLocation,
+  stopPassengerLocation,
 } from "../server/tracking";
 import { processJourneyDayEmails } from "../server/notifications";
 let repl: MongoMemoryReplSet, client: MongoClient, s: Store;
@@ -63,6 +64,7 @@ beforeEach(async () => {
     "idempotency",
     "audit",
     "tracking",
+    "passengerLocations",
     "emailNotifications",
   ])
     await col(s, name).deleteMany({});
@@ -168,19 +170,62 @@ describe("database-enforced booking safety", () => {
     );
   });
 
-  it("uses real operator GPS for passenger journey tracking", async () => {
-    await recordTripLocation(s, tripId, "admin-user", {
-      lat: 12.95,
-      lng: 79.4,
-      accuracy: 8,
-      speedKph: 54,
-      heading: 90,
-      label: "Operator live GPS",
+  it("combines confirmed passenger GPS into the live bus position", async () => {
+    const departure = new Date(Date.now() - 60 * 60 * 1000);
+    const arrival = new Date(Date.now() + 5 * 60 * 60 * 1000);
+    await col(s, "trips").updateOne(
+      { _id: tripId },
+      { $set: { departureAt: departure, arrivalAt: arrival, demo: false } },
+    );
+    const trip = {
+      _id: tripId,
+      name: "Heaven Express",
+      from: "Bengaluru",
+      to: "Chennai",
+      departureAt: departure,
+      arrivalAt: arrival,
+    };
+    await col(s, "bookings").insertMany([
+      {
+        _id: "gps-booking-1",
+        userId: "gps-user-1",
+        status: "CONFIRMED",
+        trip,
+      },
+      {
+        _id: "gps-booking-2",
+        userId: "gps-user-2",
+        status: "CONFIRMED",
+        trip,
+      },
+    ]);
+
+    await recordPassengerLocation(s, "gps-booking-1", "gps-user-1", {
+      lat: 12.94,
+      lng: 79.39,
+      accuracy: 9,
+      speedKph: 50,
     });
-    const tracking = await getTripTracking(s, tripId);
-    expect(tracking.source).toBe("LIVE_GPS");
-    expect(tracking.location?.lat).toBe(12.95);
-    expect(tracking.location?.speedKph).toBe(54);
+    await recordPassengerLocation(s, "gps-booking-2", "gps-user-2", {
+      lat: 12.96,
+      lng: 79.41,
+      accuracy: 11,
+      speedKph: 54,
+    });
+
+    let tracking = await getTripTracking(s, tripId);
+    expect(tracking.source).toBe("PASSENGER_LIVE_GPS");
+    expect(tracking.contributors).toBe(2);
+    expect(tracking.location?.lat).toBeCloseTo(12.95, 5);
+    expect(tracking.location?.lng).toBeCloseTo(79.4, 5);
+    expect(tracking.location?.speedKph).toBe(52);
+
+    await stopPassengerLocation(s, "gps-booking-1", "gps-user-1");
+    tracking = await getTripTracking(s, tripId);
+    expect(tracking.contributors).toBe(1);
+    expect(
+      await col(s, "passengerLocations").findOne({ _id: "gps-booking-1" }),
+    ).toBeNull();
   });
 
   it("sends a journey-day email exactly once when provider is configured", async () => {
