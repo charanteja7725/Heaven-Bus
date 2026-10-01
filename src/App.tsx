@@ -22,6 +22,8 @@ import {
   LogOut,
   ShieldCheck,
   ChevronDown,
+  Moon,
+  Sun,
 } from "lucide-react";
 import { api, type User } from "./lib";
 import Home from "./Home";
@@ -42,12 +44,21 @@ type Context = {
 };
 const C = createContext<Context>(null!);
 export const useApp = () => useContext(C);
+type Theme = "light" | "dark";
+
 export default function App() {
   const [user, setUser] = useState<User | null>(null),
     [toast, setToast] = useState(""),
     [jarvis, setJarvis] = useState(false),
     [prompt, setPrompt] = useState(""),
-    [menu, setMenu] = useState(false);
+    [menu, setMenu] = useState(false),
+    [theme, setTheme] = useState<Theme>(() => {
+      const saved = localStorage.getItem("hb-theme");
+      if (saved === "light" || saved === "dark") return saved;
+      return window.matchMedia("(prefers-color-scheme: dark)").matches
+        ? "dark"
+        : "light";
+    });
   const nav = useNavigate(),
     location = useLocation();
   useEffect(() => {
@@ -60,6 +71,11 @@ export default function App() {
     setMenu(false);
     window.scrollTo(0, 0);
   }, [location.pathname]);
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme;
+    document.documentElement.style.colorScheme = theme;
+    localStorage.setItem("hb-theme", theme);
+  }, [theme]);
   useEffect(() => {
     if (toast) {
       const id = setTimeout(() => setToast(""), 6000);
@@ -113,6 +129,21 @@ export default function App() {
           {user?.role === "admin" && <Link to="/admin">Operations</Link>}
         </nav>
         <div className="header-actions">
+          <button
+            className="theme-toggle"
+            aria-label={`Switch to ${theme === "light" ? "dark" : "light"} mode`}
+            title={`Switch to ${theme === "light" ? "dark" : "light"} mode`}
+            onClick={() => setTheme(theme === "light" ? "dark" : "light")}
+          >
+            <span className="theme-toggle-track">
+              <span className="theme-toggle-thumb">
+                {theme === "light" ? <Sun size={15} /> : <Moon size={15} />}
+              </span>
+            </span>
+            <span className="theme-toggle-label">
+              {theme === "light" ? "Light" : "Dark"}
+            </span>
+          </button>
           {user ? (
             <>
               <span className="user-name">Hi, {user.name.split(" ")[0]}</span>
