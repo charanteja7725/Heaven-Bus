@@ -25,6 +25,7 @@ test("passenger registers, searches, holds, pays and prints a persistent ticket"
   });
   await page.goto(`/search?from=Bengaluru&to=Chennai&date=${tomorrow}`);
   await page.getByRole("link", { name: "Choose seats" }).first().click();
+  await page.getByRole("button", { name: "Female", exact: true }).click();
   await page
     .getByRole("button", { name: "Seat 1A, available", exact: true })
     .click();
@@ -126,6 +127,7 @@ test("another traveller sees holds and releases through live updates", async ({
   );
   await page.goto(`/search?from=Mumbai&to=Pune&date=${tomorrow}`);
   await page.getByRole("link", { name: "Choose seats" }).first().click();
+  await page.getByRole("button", { name: "Male", exact: true }).click();
   const observer = await browser.newContext();
   const other = await observer.newPage();
   await other.goto(page.url());
