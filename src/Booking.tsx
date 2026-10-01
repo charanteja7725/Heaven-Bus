@@ -34,6 +34,7 @@ import {
   today,
   type Trip,
   type Hold,
+  type PassengerGender,
 } from "./lib";
 import { useApp } from "./App";
 import { SearchForm } from "./Home";
@@ -59,6 +60,26 @@ export function ErrorBox({
     </div>
   );
 }
+
+function genderLabel(gender?: PassengerGender | null) {
+  if (gender === "FEMALE") return "Female";
+  if (gender === "MALE") return "Male";
+  if (gender === "OTHER") return "Other";
+  return "Not set";
+}
+
+function adjacentSeatId(seatId: string) {
+  const match = seatId.match(/^(\d+)([ABCD])$/);
+  if (!match) return null;
+  const partner: Record<string, string> = {
+    A: "B",
+    B: "A",
+    C: "D",
+    D: "C",
+  };
+  return `${match[1]}${partner[match[2]]}`;
+}
+
 export function TripCard({ trip: t }: { trip: Trip }) {
   return (
     <article className="trip-card">
@@ -272,7 +293,8 @@ export function SeatPage() {
     [busy, setBusy] = useState(false),
     [online, setOnline] = useState(false),
     [tick, setTick] = useState(Date.now()),
-    [offset, setOffset] = useState(0);
+    [offset, setOffset] = useState(0),
+    [activeGender, setActiveGender] = useState<PassengerGender | null>(null);
   const sequence = useRef(0);
   const load = async () => {
     const seq = ++sequence.current;
@@ -321,25 +343,84 @@ export function SeatPage() {
       )
     : 0;
   const selected = remaining ? (hold?.seatIds ?? []) : [];
+  function seatRestriction(seatId: string, gender = activeGender) {
+    if (!gender) return null;
+    const partnerId = adjacentSeatId(seatId);
+    if (!partnerId) return null;
+
+    if (selected.includes(partnerId)) {
+      const partnerGender = hold?.seatGenders?.[partnerId];
+      return partnerGender && partnerGender !== gender
+        ? {
+            partnerId,
+            gender: partnerGender,
+            reason: `Seat ${seatId} must match the gender selected for adjacent seat ${partnerId}.`,
+          }
+        : null;
+    }
+
+    const partner = data?.seats?.find((s: any) => s.seatId === partnerId);
+    if (!partner) return null;
+    const expired =
+      partner.state === "HELD" &&
+      partner.expiresAt &&
+      new Date(partner.expiresAt).getTime() <= tick + offset;
+    const occupied =
+      partner.state === "BOOKED" ||
+      (partner.state === "HELD" && !expired);
+    return occupied && partner.gender && partner.gender !== gender
+      ? {
+          partnerId,
+          gender: partner.gender as PassengerGender,
+          reason: `Seat ${seatId} can only be booked for a ${genderLabel(partner.gender).toLowerCase()} passenger because adjacent seat ${partnerId} is occupied.`,
+        }
+      : null;
+  }
+
   async function toggle(seat: string) {
     if (!user) {
       nav(`/login?next=${encodeURIComponent(`/trip/${id}`)}`);
       return;
     }
     if (busy) return;
-    const next = selected.includes(seat)
+
+    const removing = selected.includes(seat);
+    if (!removing && !activeGender) {
+      notify("Choose the passenger gender before selecting a seat.");
+      return;
+    }
+
+    const restriction = !removing ? seatRestriction(seat) : null;
+    if (restriction) {
+      notify(restriction.reason);
+      return;
+    }
+
+    const next = removing
       ? selected.filter((x) => x !== seat)
       : [...selected, seat];
     if (next.length > 6) {
       notify("You can reserve up to six seats.");
       return;
     }
+
+    const seatGenders = { ...(hold?.seatGenders ?? {}) } as Record<
+      string,
+      PassengerGender
+    >;
+    if (removing) delete seatGenders[seat];
+    else seatGenders[seat] = activeGender!;
+
     setBusy(true);
     try {
       await api("/holds", {
         method: "POST",
         headers: { "Idempotency-Key": crypto.randomUUID() },
-        body: JSON.stringify({ tripId: id, seatIds: next }),
+        body: JSON.stringify({
+          tripId: id,
+          seatIds: next,
+          seatGenders,
+        }),
       });
       await load();
     } catch (e) {
@@ -392,6 +473,28 @@ export function SeatPage() {
             </div>
             <BusFront size={30} />
           </div>
+          <div className="gender-seat-picker">
+            <div>
+              <strong>Who is this seat for?</strong>
+              <span>Select a gender, then choose the seat.</span>
+            </div>
+            <div className="gender-options" role="group" aria-label="Passenger gender for next seat">
+              {(["FEMALE", "MALE", "OTHER"] as PassengerGender[]).map((gender) => (
+                <button
+                  key={gender}
+                  type="button"
+                  className={`gender-option ${activeGender === gender ? "active" : ""} ${gender.toLowerCase()}`}
+                  aria-pressed={activeGender === gender}
+                  onClick={() => setActiveGender(gender)}
+                >
+                  {genderLabel(gender)}
+                </button>
+              ))}
+            </div>
+            <p>
+              Adjacent seats are restricted to the same gender once one seat in the pair is held or booked.
+            </p>
+          </div>
           <div className="seat-map-wrap">
             <div className="seat-legend">
               <span>
@@ -410,6 +513,14 @@ export function SeatPage() {
                 <i className="booked" />
                 Booked
               </span>
+              <span>
+                <i className="booked-female" />
+                Booked · female
+              </span>
+              <span>
+                <i className="restricted" />
+                Gender restricted
+              </span>
             </div>
             <div className="bus-frame">
               <div className="driver">
@@ -427,24 +538,54 @@ export function SeatPage() {
                     new Date(seat.expiresAt).getTime() <= tick + offset;
                   const state = expired ? "AVAILABLE" : seat?.state;
                   const mine = selected.includes(seatId);
+                  const restriction = !mine
+                    ? seatRestriction(seatId)
+                    : null;
+                  const femaleBooked =
+                    state === "BOOKED" && seat?.gender === "FEMALE";
+                  const genderClass = femaleBooked
+                    ? "booked-female"
+                    : state === "BOOKED"
+                      ? "booked"
+                      : state === "HELD"
+                        ? "held"
+                        : restriction
+                          ? "restricted"
+                          : "";
+                  const disabled =
+                    busy ||
+                    !!error ||
+                    !seat ||
+                    state === "BOOKED" ||
+                    (state === "HELD" && !mine) ||
+                    hold?.state === "PAYMENT_PENDING" ||
+                    !!restriction;
                   return (
                     <button
                       key={seatId}
-                      aria-label={`Seat ${seatId}, ${mine ? "held by you" : (state?.toLowerCase() ?? "loading")}`}
-                      aria-pressed={mine}
-                      disabled={
-                        busy ||
-                        !!error ||
-                        !seat ||
-                        state === "BOOKED" ||
-                        (state === "HELD" && !mine) ||
-                        hold?.state === "PAYMENT_PENDING"
+                      aria-label={
+                        `Seat ${seatId}, ` +
+                        (mine
+                          ? `held by you for a ${genderLabel(hold?.seatGenders?.[seatId]).toLowerCase()} passenger`
+                          : femaleBooked
+                            ? "booked by a female passenger"
+                            : restriction
+                              ? restriction.reason
+                              : state?.toLowerCase() ?? "loading")
                       }
+                      aria-pressed={mine}
+                      title={restriction?.reason ?? undefined}
+                      disabled={disabled}
                       onClick={() => toggle(seatId)}
-                      className={`seat ${mine ? "selected" : state === "HELD" ? "held" : state === "BOOKED" ? "booked" : ""} ${i % 4 === 2 ? "aisle" : ""}`}
+                      className={`seat ${mine ? "selected" : genderClass} ${mine ? (hold?.seatGenders?.[seatId] ?? "").toLowerCase() : ""} ${i % 4 === 2 ? "aisle" : ""}`}
                     >
                       <Armchair size={26} />
                       <span>{seatId}</span>
+                      {mine && hold?.seatGenders?.[seatId] && (
+                        <b className="seat-gender-badge">
+                          {genderLabel(hold.seatGenders[seatId]).charAt(0)}
+                        </b>
+                      )}
                     </button>
                   );
                 })}
@@ -490,9 +631,15 @@ export function SeatPage() {
                   {String(remaining % 60).padStart(2, "0")}
                 </strong>
               </div>
-              <div className="summary-row">
+              <div className="summary-row seat-assignment-summary">
                 <span>Your seats</span>
-                <strong>{selected.join(", ")}</strong>
+                <strong>
+                  {selected.map((seatId) => (
+                    <span className="seat-assignment-chip" key={seatId}>
+                      {seatId} · {genderLabel(hold?.seatGenders?.[seatId])}
+                    </span>
+                  ))}
+                </strong>
               </div>
               <div className="summary-row">
                 <span>
@@ -723,9 +870,10 @@ export function CheckoutPage() {
                   const o = await api(`/holds/${id}/payment`, {
                     method: "POST",
                     body: JSON.stringify({
-                      passengers: hold.seatIds.map((_, i) => ({
+                      passengers: hold.seatIds.map((seatId, i) => ({
                         name: form.get(`name${i}`),
                         age: Number(form.get(`age${i}`)),
+                        gender: hold.seatGenders?.[seatId],
                       })),
                       contact: form.get("contact"),
                     }),
@@ -772,6 +920,18 @@ export function CheckoutPage() {
                         disabled={!!order}
                         placeholder="Age"
                       />
+                    </label>
+                    <label className="gender-field">
+                      Gender
+                      <select
+                        value={hold.seatGenders?.[s] ?? ""}
+                        disabled
+                        aria-label={`Gender for passenger in seat ${s}`}
+                      >
+                        <option value="FEMALE">Female</option>
+                        <option value="MALE">Male</option>
+                        <option value="OTHER">Other</option>
+                      </select>
                     </label>
                   </div>
                 </div>
@@ -1132,6 +1292,7 @@ export function TicketPage() {
               <div key={i}>
                 <span>
                   {p.name}, {p.age}
+                  {p.gender ? ` · ${genderLabel(p.gender)}` : ""}
                 </span>
                 <strong>Seat {booking.seatIds[i]}</strong>
               </div>
