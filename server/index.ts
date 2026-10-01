@@ -7,6 +7,7 @@ import { col, initialize, type Store } from "./db.js";
 import { cleanup } from "./booking.js";
 import { reconcile } from "./payments.js";
 import { seed } from "./seed.js";
+import { processJourneyDayEmails } from "./notifications.js";
 let store: Store | null = null;
 const secret = process.env.JWT_SECRET;
 if (!secret || secret.length < 32)
@@ -34,6 +35,15 @@ if (
   throw new Error(
     "Razorpay Test Mode requires a test key ID, key secret and webhook secret",
   );
+const emailConfig = {
+  apiKey: process.env.RESEND_API_KEY,
+  from: process.env.JOURNEY_EMAIL_FROM,
+  appUrl:
+    process.env.PUBLIC_APP_URL?.trim() ||
+    config.origins.find((origin) => origin.startsWith("https://")) ||
+    config.origins[0] ||
+    "http://localhost:5173",
+};
 const app = createApp(() => store, config),
   http = createServer(app);
 const io = new Server(http, {
@@ -135,7 +145,8 @@ if (!process.env.MONGODB_URI)
 await connect();
 let cleaning = false,
   publishing = false,
-  reconciling = false;
+  reconciling = false,
+  emailing = false;
 const timers = [
   setInterval(() => void connect(), 30000),
   setInterval(async () => {
@@ -158,10 +169,13 @@ const timers = [
         .limit(100)
         .toArray();
       for (const e of records) {
-        io.to(`trip:${e.tripId}`).emit("seats:changed", {
-          eventId: e._id,
-          tripId: e.tripId,
-        });
+        io.to(`trip:${e.tripId}`).emit(
+          e.kind === "TRACKING_CHANGED" ? "tracking:changed" : "seats:changed",
+          {
+            eventId: e._id,
+            tripId: e.tripId,
+          },
+        );
         await col(store, "outbox").updateOne(
           { _id: e._id },
           { $set: { sentAt: new Date() } },
@@ -173,6 +187,17 @@ const timers = [
       publishing = false;
     }
   }, 400),
+  setInterval(async () => {
+    if (!store || emailing) return;
+    emailing = true;
+    try {
+      await processJourneyDayEmails(store, emailConfig);
+    } catch {
+      console.error("Journey email delivery will retry");
+    } finally {
+      emailing = false;
+    }
+  }, 5 * 60000),
   setInterval(async () => {
     if (!store || reconciling) return;
     reconciling = true;
