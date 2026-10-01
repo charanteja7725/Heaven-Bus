@@ -16,6 +16,7 @@ import {
   CheckCircle2,
   XCircle,
   CircleDollarSign,
+  Search,
 } from "lucide-react";
 import { api, money, time, dateLabel } from "./lib";
 import { useApp } from "./App";
@@ -28,7 +29,11 @@ export default function Admin() {
     [create, setCreate] = useState(false),
     [busy, setBusy] = useState(false),
     [tripBusy, setTripBusy] = useState(""),
-    [refundBusy, setRefundBusy] = useState("");
+    [refundBusy, setRefundBusy] = useState(""),
+    [trips, setTrips] = useState<any[]>([]),
+    [tripSearch, setTripSearch] = useState(""),
+    [tripStatus, setTripStatus] = useState("ALL"),
+    [tripsLoading, setTripsLoading] = useState(false);
   const load = () =>
     api("/admin/overview")
       .then((d) => {
@@ -36,6 +41,17 @@ export default function Admin() {
         setError("");
       })
       .catch((e) => setError(e.message));
+
+  const loadTrips = (search = tripSearch, status = tripStatus) => {
+    setTripsLoading(true);
+    const params = new URLSearchParams();
+    if (search.trim()) params.set("q", search.trim());
+    if (status !== "ALL") params.set("status", status);
+    return api(`/admin/trips?${params}`)
+      .then(setTrips)
+      .catch((e) => notify((e as Error).message))
+      .finally(() => setTripsLoading(false));
+  };
 
   async function manageTrip(
     tripId: string,
@@ -64,7 +80,7 @@ export default function Admin() {
             ? "Trip sales resumed."
             : "Trip removed.",
       );
-      await load();
+      await Promise.all([load(), loadTrips()]);
     } catch (e) {
       notify((e as Error).message);
     } finally {
@@ -110,10 +126,20 @@ export default function Admin() {
   useEffect(() => {
     if (user?.role === "admin") {
       load();
+      loadTrips("", "ALL");
       const t = setInterval(load, 10000);
       return () => clearInterval(t);
     }
   }, [user]);
+
+  useEffect(() => {
+    if (user?.role !== "admin") return;
+    const timer = setTimeout(
+      () => void loadTrips(tripSearch, tripStatus),
+      250,
+    );
+    return () => clearTimeout(timer);
+  }, [user, tripSearch, tripStatus]);
   if (user?.role !== "admin")
     return (
       <div className="empty-state">
@@ -205,7 +231,7 @@ export default function Admin() {
                 });
                 notify("Trip published with 40 available seats.");
                 setCreate(false);
-                load();
+                await Promise.all([load(), loadTrips("", "ALL")]);
               } catch (e) {
                 notify((e as Error).message);
               } finally {
@@ -267,7 +293,10 @@ export default function Admin() {
         ))}
         <button
           className="icon-button"
-          onClick={load}
+          onClick={() => {
+            load();
+            if (tab === "trips") loadTrips();
+          }}
           aria-label="Refresh operations"
         >
           <RefreshCw size={16} />
@@ -346,7 +375,37 @@ export default function Admin() {
           </>
         ) : tab === "trips" ? (
           <>
-            <h2>Upcoming departures</h2>
+            <div className="admin-section-heading admin-trips-heading">
+              <div>
+                <h2>Created & upcoming trips</h2>
+                <p className="muted small-text">
+                  Search every upcoming departure, including trips created from this admin panel.
+                </p>
+              </div>
+              <div className="admin-trip-search">
+                <label>
+                  <Search size={16} />
+                  <input
+                    aria-label="Search created trips"
+                    value={tripSearch}
+                    onChange={(e) => setTripSearch(e.target.value)}
+                    placeholder="Search bus, origin or destination"
+                  />
+                </label>
+                <select
+                  aria-label="Filter trip status"
+                  value={tripStatus}
+                  onChange={(e) => setTripStatus(e.target.value)}
+                >
+                  <option value="ALL">All statuses</option>
+                  <option value="PUBLISHED">On sale</option>
+                  <option value="STOPPED">Stopped</option>
+                </select>
+              </div>
+            </div>
+            {tripsLoading && (
+              <p className="muted small-text">Updating trip results…</p>
+            )}
             <table>
               <thead>
                 <tr>
@@ -360,9 +419,14 @@ export default function Admin() {
                 </tr>
               </thead>
               <tbody>
-                {data.trips.map((t: any) => (
+                {trips.map((t: any) => (
                   <tr key={t._id}>
-                    <td>{t.name}</td>
+                    <td>
+                      {t.name}
+                      {t.source === "ADMIN" && (
+                        <div className="admin-created-badge">Created here</div>
+                      )}
+                    </td>
                     <td>
                       {t.from} → {t.to}
                     </td>
@@ -415,6 +479,11 @@ export default function Admin() {
                 ))}
               </tbody>
             </table>
+            {!trips.length && !tripsLoading && (
+              <p className="table-empty">
+                No trips match this search. Newly created departures will appear here immediately.
+              </p>
+            )}
           </>
         ) : tab === "refunds" ? (
           <>
