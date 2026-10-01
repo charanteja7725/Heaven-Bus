@@ -35,18 +35,18 @@ npm run admin -- your@email.com
 
 ## Environment
 
-| Variable | Where | Purpose |
-| --- | --- | --- |
-| MONGODB_URI | Render secret | Atlas connection string with database credentials |
-| MONGODB_DB | Render | Dedicated database, default heaven_bus |
-| JWT_SECRET | Render secret | Random signing secret, minimum 32 characters |
-| FRONTEND_URL | Render | Exact frontend origin; comma-separated list supported |
-| PAYMENT_MODE | Render | sandbox or razorpay |
-| SEED_DEMO | Render | true seeds upcoming 14-day demo schedules on startup |
-| RAZORPAY_KEY_ID | Render | Provider test key ID |
-| RAZORPAY_KEY_SECRET | Render secret | Provider test key secret |
-| RAZORPAY_WEBHOOK_SECRET | Render secret | Verify raw signed webhook bodies |
-| VITE_API_URL | Vercel | Render API origin, without /api suffix |
+| Variable                | Where         | Purpose                                               |
+| ----------------------- | ------------- | ----------------------------------------------------- |
+| MONGODB_URI             | Render secret | Atlas connection string with database credentials     |
+| MONGODB_DB              | Render        | Dedicated database, default heaven_bus                |
+| JWT_SECRET              | Render secret | Random signing secret, minimum 32 characters          |
+| FRONTEND_URL            | Render        | Exact frontend origin; comma-separated list supported |
+| PAYMENT_MODE            | Render        | sandbox or razorpay                                   |
+| SEED_DEMO               | Render        | true seeds upcoming 14-day demo schedules on startup  |
+| RAZORPAY_KEY_ID         | Render        | Provider test key ID                                  |
+| RAZORPAY_KEY_SECRET     | Render secret | Provider test key secret                              |
+| RAZORPAY_WEBHOOK_SECRET | Render secret | Verify raw signed webhook bodies                      |
+| VITE_API_URL            | Vercel        | Render API origin, without /api suffix                |
 
 ## Deploy
 
