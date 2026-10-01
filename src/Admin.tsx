@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import {
   BusFront,
@@ -17,8 +17,6 @@ import {
   XCircle,
   CircleDollarSign,
   Search,
-  Navigation,
-  Radio,
 } from "lucide-react";
 import { api, money, time, dateLabel } from "./lib";
 import { useApp } from "./App";
@@ -35,10 +33,7 @@ export default function Admin() {
     [trips, setTrips] = useState<any[]>([]),
     [tripSearch, setTripSearch] = useState(""),
     [tripStatus, setTripStatus] = useState("ALL"),
-    [tripsLoading, setTripsLoading] = useState(false),
-    [gpsTrip, setGpsTrip] = useState("");
-  const gpsWatch = useRef<number | null>(null),
-    lastGpsSent = useRef(0);
+    [tripsLoading, setTripsLoading] = useState(false);
   const load = () =>
     api("/admin/overview")
       .then((d) => {
@@ -92,67 +87,6 @@ export default function Admin() {
       setTripBusy("");
     }
   }
-  function stopGpsBroadcast(message?: string) {
-    if (gpsWatch.current != null && navigator.geolocation)
-      navigator.geolocation.clearWatch(gpsWatch.current);
-    gpsWatch.current = null;
-    setGpsTrip("");
-    if (message) notify(message);
-  }
-
-  function toggleGpsBroadcast(tripId: string) {
-    if (!navigator.geolocation) {
-      notify("This device does not provide browser GPS.");
-      return;
-    }
-    if (gpsTrip === tripId) {
-      stopGpsBroadcast("Live GPS broadcast stopped.");
-      return;
-    }
-    if (gpsWatch.current != null)
-      navigator.geolocation.clearWatch(gpsWatch.current);
-    setGpsTrip(tripId);
-    lastGpsSent.current = 0;
-    gpsWatch.current = navigator.geolocation.watchPosition(
-      async (position) => {
-        if (Date.now() - lastGpsSent.current < 5000) return;
-        lastGpsSent.current = Date.now();
-        try {
-          await api(`/admin/trips/${encodeURIComponent(tripId)}/location`, {
-            method: "POST",
-            body: JSON.stringify({
-              lat: position.coords.latitude,
-              lng: position.coords.longitude,
-              accuracy: position.coords.accuracy,
-              speedKph:
-                position.coords.speed == null
-                  ? undefined
-                  : Math.max(0, position.coords.speed * 3.6),
-              heading: position.coords.heading ?? undefined,
-              label: "Operator live GPS",
-            }),
-          });
-        } catch (e) {
-          notify((e as Error).message);
-        }
-      },
-      (error) => {
-        stopGpsBroadcast();
-        notify(
-          error.code === error.PERMISSION_DENIED
-            ? "Location permission is required to broadcast the bus GPS."
-            : "Could not read this device’s GPS. Try again in an open area.",
-        );
-      },
-      {
-        enableHighAccuracy: true,
-        maximumAge: 5000,
-        timeout: 15000,
-      },
-    );
-    notify("Live GPS broadcast started for this trip.");
-  }
-
   async function manageRefund(
     refundId: string,
     action: "approve" | "reject",
@@ -197,13 +131,6 @@ export default function Admin() {
       return () => clearInterval(t);
     }
   }, [user]);
-
-  useEffect(() => {
-    return () => {
-      if (gpsWatch.current != null && navigator.geolocation)
-        navigator.geolocation.clearWatch(gpsWatch.current);
-    };
-  }, []);
 
   useEffect(() => {
     if (user?.role !== "admin") return;
@@ -453,7 +380,7 @@ export default function Admin() {
                 <h2>Created & upcoming trips</h2>
                 <p className="muted small-text">
                   Search every upcoming departure, including trips created from this admin panel.
-                  Open this dashboard on the bus operator’s phone to broadcast real GPS.
+                  Live journey location is contributed by confirmed passengers who opt in while travelling.
                 </p>
               </div>
               <div className="admin-trip-search">
@@ -540,17 +467,6 @@ export default function Admin() {
                             <Play size={14} /> Resume
                           </button>
                         )}
-                        <button
-                          className={`text-link ${gpsTrip === t._id ? "gps-live-action" : ""}`}
-                          onClick={() => toggleGpsBroadcast(t._id)}
-                        >
-                          {gpsTrip === t._id ? (
-                            <Radio size={14} />
-                          ) : (
-                            <Navigation size={14} />
-                          )}
-                          {gpsTrip === t._id ? "Stop GPS" : "Broadcast GPS"}
-                        </button>
                         <button
                           className="text-link"
                           disabled={tripBusy.startsWith(t._id)}
