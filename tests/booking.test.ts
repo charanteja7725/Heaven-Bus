@@ -361,6 +361,38 @@ describe("API and assistant", () => {
       ).status,
     ).toBe(403);
   });
+  it("cancels a confirmed booking through the public passenger API", async () => {
+    const app = createApp(() => s, cfg);
+    const signup = await request(app).post("/api/auth/register").send({
+      name: "Cancel Tester",
+      email: "cancel-api@example.test",
+      password: "test-password-123",
+    });
+    const departure = new Date(Date.now() + 30 * 3600000);
+    await col(s, "trips").updateOne(
+      { _id: tripId },
+      {
+        $set: {
+          departureAt: departure,
+          arrivalAt: new Date(departure.getTime() + 6 * 3600000),
+        },
+      },
+    );
+    const h = await prepare(signup.body.user._id, ["1A"]);
+    await finalize(s, h._id, "pay-api-cancel", h.amount, "INR");
+
+    const result = await request(app)
+      .post(`/api/bookings/${h._id}/cancel`)
+      .set("Authorization", `Bearer ${signup.body.token}`);
+
+    expect(result.status).toBe(200);
+    expect(result.body.status).toBe("CANCELLED");
+    expect(result.body.refundPercent).toBe(100);
+    expect((await col(s, "bookings").findOne({ _id: h._id }))!.status).toBe(
+      "CANCELLED",
+    );
+  });
+
   it("lets an administrator stop, resume and remove an unsold trip", async () => {
     const app = createApp(() => s, cfg);
     const signup = await request(app).post("/api/auth/register").send({
