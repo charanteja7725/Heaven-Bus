@@ -296,6 +296,7 @@ export async function startPayment(
   passengers: any[],
   contact: string,
   mode: string,
+  notificationEmail = "",
 ) {
   return transaction(s, async (session) => {
     const existing = await col(s, "orders").findOne(
@@ -344,6 +345,7 @@ export async function startPayment(
           state: "PAYMENT_PENDING",
           passengers: normalizedPassengers,
           contact,
+          notificationEmail: notificationEmail.trim().toLowerCase(),
         },
       },
       { session },
@@ -463,6 +465,7 @@ export async function finalize(
       seatIds: h.seatIds,
       passengers: h.passengers,
       contact: h.contact,
+      notificationEmail: h.notificationEmail ?? "",
       familyBooking: !!h.familyBooking,
       amount,
       status: "CONFIRMED",
