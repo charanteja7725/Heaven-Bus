@@ -100,7 +100,9 @@ test("passenger registers, searches, holds, pays and prints a persistent ticket"
   await expect(page.getByText("Seat 1A", { exact: true })).toBeVisible();
   await page.getByRole("link", { name: "Live journey" }).click();
   await expect(page.getByLabel("Live journey route map")).toBeVisible();
-  await expect(page.getByText(/Scheduled position|Demo simulated movement/)).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Scheduled position" }),
+  ).toBeVisible();
   await page.screenshot({
     path: "test-results/confirmed-ticket.png",
     fullPage: true,
