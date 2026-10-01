@@ -1,16 +1,18 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { io } from "socket.io-client";
 import {
   ArrowLeft,
   BusFront,
   Clock3,
+  LocateFixed,
   MapPin,
   Navigation,
   PhoneCall,
   Radio,
   RefreshCw,
   ShieldCheck,
+  StopCircle,
 } from "lucide-react";
 import { API, api, dateLabel, time, type SupportContact } from "./lib";
 import { ErrorBox } from "./Booking";
@@ -22,9 +24,9 @@ function phaseLabel(phase?: string) {
 }
 
 function sourceLabel(source?: string) {
-  if (source === "LIVE_GPS") return "Live GPS";
+  if (source === "PASSENGER_LIVE_GPS") return "Passenger live GPS";
+  if (source === "STALE_PASSENGER_GPS") return "Last passenger GPS";
   if (source === "DEMO_SIMULATION") return "Demo simulated movement";
-  if (source === "STALE_GPS") return "Last known GPS";
   return "Scheduled position";
 }
 
@@ -32,7 +34,12 @@ export default function TrackingPage() {
   const { id } = useParams();
   const [data, setData] = useState<any>(null),
     [error, setError] = useState(""),
-    [online, setOnline] = useState(false);
+    [online, setOnline] = useState(false),
+    [sharing, setSharing] = useState(false),
+    [shareMessage, setShareMessage] = useState("");
+  const watchRef = useRef<number | null>(null),
+    lastSentRef = useRef(0),
+    sharingRef = useRef(false);
 
   const load = async () => {
     try {
@@ -65,6 +72,101 @@ export default function TrackingPage() {
       socket.disconnect();
     };
   }, [data?.tracking?.tripId]);
+
+  useEffect(
+    () => () => {
+      if (watchRef.current != null && navigator.geolocation)
+        navigator.geolocation.clearWatch(watchRef.current);
+      if (sharingRef.current)
+        void api(`/bookings/${encodeURIComponent(id!)}/location`, {
+          method: "DELETE",
+        }).catch(() => undefined);
+    },
+    [id],
+  );
+
+  async function stopSharing(showMessage = true) {
+    if (watchRef.current != null && navigator.geolocation)
+      navigator.geolocation.clearWatch(watchRef.current);
+    watchRef.current = null;
+    sharingRef.current = false;
+    setSharing(false);
+    try {
+      await api(`/bookings/${encodeURIComponent(id!)}/location`, {
+        method: "DELETE",
+      });
+      if (showMessage)
+        setShareMessage("Location sharing stopped. Your report was removed.");
+      await load();
+    } catch (e) {
+      if (showMessage) setShareMessage((e as Error).message);
+    }
+  }
+
+  function startSharing() {
+    if (!navigator.geolocation) {
+      setShareMessage("This device does not provide browser location.");
+      return;
+    }
+    if (!data?.tracking?.sharing?.canShare) {
+      setShareMessage(
+        "Location sharing is available from two hours before departure until two hours after scheduled arrival.",
+      );
+      return;
+    }
+
+    setShareMessage("Requesting location permission…");
+    lastSentRef.current = 0;
+    watchRef.current = navigator.geolocation.watchPosition(
+      async (position) => {
+        if (Date.now() - lastSentRef.current < 8000) return;
+        lastSentRef.current = Date.now();
+        try {
+          const result = await api(
+            `/bookings/${encodeURIComponent(id!)}/location`,
+            {
+              method: "POST",
+              body: JSON.stringify({
+                lat: position.coords.latitude,
+                lng: position.coords.longitude,
+                accuracy: position.coords.accuracy,
+                speedKph:
+                  position.coords.speed == null
+                    ? undefined
+                    : Math.max(0, position.coords.speed * 3.6),
+                heading: position.coords.heading ?? undefined,
+              }),
+            },
+          );
+          sharingRef.current = true;
+          setSharing(true);
+          setShareMessage(
+            result.contributors > 1
+              ? `Sharing live location · ${result.contributors} passengers are contributing.`
+              : "Sharing live location · your GPS is helping locate the bus.",
+          );
+          await load();
+        } catch (e) {
+          setShareMessage((e as Error).message);
+          await stopSharing(false);
+        }
+      },
+      (geoError) => {
+        sharingRef.current = false;
+        setSharing(false);
+        setShareMessage(
+          geoError.code === geoError.PERMISSION_DENIED
+            ? "Location permission was denied. Allow location access to help track this journey."
+            : "Could not read your GPS. Try again with location services enabled.",
+        );
+      },
+      {
+        enableHighAccuracy: true,
+        maximumAge: 5000,
+        timeout: 15000,
+      },
+    );
+  }
 
   const tracking = data?.tracking;
   const progress = Math.max(0, Math.min(100, Number(tracking?.progress ?? 0)));
@@ -109,21 +211,69 @@ export default function TrackingPage() {
             </span>
           </div>
 
+          <section className="panel passenger-location-panel">
+            <div className="passenger-location-copy">
+              <span className="passenger-location-icon">
+                <LocateFixed size={20} />
+              </span>
+              <div>
+                <span className="eyebrow">PASSENGER-POWERED LIVE LOCATION</span>
+                <h2>Help passengers see where the bus is.</h2>
+                <p>
+                  While you are on this confirmed journey, you can share your
+                  phone’s GPS. HEAVEN-BUS combines fresh passenger reports into
+                  one bus position. Other passengers never see your individual
+                  raw location.
+                </p>
+              </div>
+            </div>
+            <button
+              className={`button ${sharing ? "button-outline sharing-active" : "button-dark"}`}
+              disabled={!tracking.sharing?.canShare && !sharing}
+              onClick={() => (sharing ? stopSharing() : startSharing())}
+            >
+              {sharing ? <StopCircle size={17} /> : <LocateFixed size={17} />}
+              {sharing ? "Stop sharing" : "Share my live location"}
+            </button>
+            <div className="passenger-location-meta">
+              <span>
+                {tracking.sharing?.canShare
+                  ? "Sharing window is open for this journey."
+                  : `Sharing opens ${time(tracking.sharing?.opensAt)} IST, two hours before departure.`}
+              </span>
+              <span>
+                Reports automatically expire after 2 minutes if your phone stops
+                sending updates.
+              </span>
+            </div>
+            {shareMessage && (
+              <p className="passenger-share-message" role="status">
+                {shareMessage}
+              </p>
+            )}
+          </section>
+
           <section className="panel live-map-card">
             <div className="live-map-top">
               <div>
                 <span className="eyebrow">{phaseLabel(tracking.phase)}</span>
                 <h2>{sourceLabel(tracking.source)}</h2>
               </div>
-              <button className="icon-button" aria-label="Refresh live location" onClick={load}>
+              <button
+                className="icon-button"
+                aria-label="Refresh live location"
+                onClick={load}
+              >
                 <RefreshCw size={17} />
               </button>
             </div>
 
             {tracking.source === "DEMO_SIMULATION" && (
               <div className="tracking-demo-note">
-                This seeded demo trip is using simulated movement. A real bus
-                replaces this automatically when an operator starts GPS broadcast.
+                No fresh passenger GPS is available yet, so this seeded demo
+                trip is showing simulated movement. During travel, confirmed
+                passengers can opt in above and their combined GPS replaces the
+                simulation.
               </div>
             )}
 
@@ -155,7 +305,7 @@ export default function TrackingPage() {
                 </div>
                 <div>
                   <small>CURRENT BUS</small>
-                  <strong>{location?.label ?? "Waiting for GPS"}</strong>
+                  <strong>{location?.label ?? "Waiting for passenger GPS"}</strong>
                 </div>
                 <div>
                   <small>DESTINATION</small>
@@ -182,30 +332,35 @@ export default function TrackingPage() {
                 <span>GPS status</span>
                 <strong>{sourceLabel(tracking.source)}</strong>
               </article>
+              <article>
+                <LocateFixed size={18} />
+                <span>Fresh contributors</span>
+                <strong>{tracking.contributors ?? 0} passengers</strong>
+              </article>
             </div>
 
             {location && (
               <div className="live-coordinate-row">
                 <div>
-                  <small>CURRENT POSITION</small>
+                  <small>CURRENT BUS POSITION</small>
                   <strong>
                     {Number(location.lat).toFixed(5)},{" "}
                     {Number(location.lng).toFixed(5)}
                   </strong>
                 </div>
                 <div>
-                  <small>LAST GPS UPDATE</small>
+                  <small>LAST PASSENGER GPS UPDATE</small>
                   <strong>
                     {tracking.lastUpdated
                       ? `${time(tracking.lastUpdated)} IST`
                       : tracking.source === "DEMO_SIMULATION"
-                        ? "Live demo clock"
-                        : "No operator GPS yet"}
+                        ? "No passenger GPS yet"
+                        : "Waiting for passenger GPS"}
                   </strong>
                 </div>
                 {location.speedKph != null && (
                   <div>
-                    <small>SPEED</small>
+                    <small>ESTIMATED SPEED</small>
                     <strong>{Math.round(location.speedKph)} km/h</strong>
                   </div>
                 )}
@@ -215,9 +370,10 @@ export default function TrackingPage() {
             <div className="tracking-safety-note">
               <ShieldCheck size={18} />
               <p>
-                GPS location is for journey awareness. For immediate safety,
-                medical, rash-driving or delay concerns, use the responsible
-                support desk below.
+                Passenger GPS is used only to estimate the bus position for this
+                journey. Individual passenger coordinates are not shown to other
+                travellers. For safety, medical, rash-driving or delay concerns,
+                use the responsible support desk below.
               </p>
             </div>
           </section>
