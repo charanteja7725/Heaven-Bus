@@ -5380,3 +5380,117 @@ select:focus-visible {
     grid-template-columns: 1fr;
   }
 }
+
+
+/* Passenger-powered live location ---------------------------------------- */
+.passenger-location-panel {
+  margin-bottom: 20px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 14px 20px;
+  align-items: center;
+  border-color: color-mix(in srgb, var(--primary) 24%, var(--border));
+  background:
+    linear-gradient(
+      135deg,
+      color-mix(in srgb, var(--primary-soft) 72%, var(--surface)),
+      var(--surface)
+    );
+}
+
+.passenger-location-copy {
+  display: flex;
+  align-items: flex-start;
+  gap: 13px;
+}
+
+.passenger-location-copy h2 {
+  margin: 5px 0 7px;
+}
+
+.passenger-location-copy p {
+  max-width: 720px;
+  margin: 0;
+  font-size: 10px;
+  line-height: 1.6;
+}
+
+.passenger-location-icon {
+  width: 42px;
+  height: 42px;
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  border-radius: 12px;
+  color: var(--primary);
+  background: var(--primary-soft);
+  border: 1px solid color-mix(in srgb, var(--primary) 18%, var(--border));
+}
+
+.passenger-location-meta {
+  grid-column: 1 / -1;
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding-top: 11px;
+  border-top: 1px solid var(--border);
+  color: var(--muted);
+  font-size: 8px;
+  line-height: 1.5;
+}
+
+.passenger-share-message {
+  grid-column: 1 / -1;
+  margin: 0;
+  padding: 9px 11px;
+  border-radius: 9px;
+  color: var(--text);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  font-size: 9px;
+  font-weight: 650;
+}
+
+.sharing-active {
+  color: var(--danger);
+  border-color: color-mix(in srgb, var(--danger) 38%, var(--border));
+  background: var(--danger-soft);
+}
+
+.tracking-stats {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+@media (max-width: 900px) {
+  .passenger-location-panel {
+    grid-template-columns: 1fr;
+  }
+
+  .passenger-location-panel > .button {
+    width: 100%;
+  }
+
+  .passenger-location-meta {
+    grid-column: 1;
+    flex-direction: column;
+  }
+
+  .passenger-share-message {
+    grid-column: 1;
+  }
+
+  .tracking-stats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 560px) {
+  .passenger-location-copy {
+    display: grid;
+    grid-template-columns: auto 1fr;
+  }
+
+  .tracking-stats {
+    grid-template-columns: 1fr;
+  }
+}
