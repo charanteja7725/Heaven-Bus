@@ -160,6 +160,90 @@ describe("database-enforced booking safety", () => {
       next.hold._id,
     );
   });
+  it("never allows opposite genders to claim adjacent seats concurrently", async () => {
+    const results = await Promise.allSettled([
+      selectSeats(
+        s,
+        "female-user",
+        tripId,
+        ["1A"],
+        "female-adjacent-key",
+        { "1A": "FEMALE" },
+      ),
+      selectSeats(
+        s,
+        "male-user",
+        tripId,
+        ["1B"],
+        "male-adjacent-key",
+        { "1B": "MALE" },
+      ),
+    ]);
+    expect(results.filter((result) => result.status === "fulfilled")).toHaveLength(1);
+    expect(await col(s, "holds").countDocuments({ active: true })).toBe(1);
+  });
+
+  it("marks a booked female seat and restricts its neighbour to the same gender", async () => {
+    const { hold } = await selectSeats(
+      s,
+      "female-user",
+      tripId,
+      ["1A"],
+      "female-booking-key",
+      { "1A": "FEMALE" },
+    );
+    await startPayment(
+      s,
+      "female-user",
+      hold._id,
+      [{ name: "Female Passenger", age: 26, gender: "FEMALE" }],
+      "9876543210",
+      "sandbox",
+    );
+    await finalize(s, hold._id, "pay-female-seat", hold.amount, "INR");
+
+    const femaleSeat = (await snapshot(s, tripId)).seats.find(
+      (seat) => seat.seatId === "1A",
+    );
+    expect(femaleSeat?.state).toBe("BOOKED");
+    expect(femaleSeat?.gender).toBe("FEMALE");
+
+    await expect(
+      selectSeats(
+        s,
+        "male-user",
+        tripId,
+        ["1B"],
+        "male-next-to-female",
+        { "1B": "MALE" },
+      ),
+    ).rejects.toThrow("female passenger");
+
+    const sameGender = await selectSeats(
+      s,
+      "female-user-2",
+      tripId,
+      ["1B"],
+      "female-next-to-female",
+      { "1B": "FEMALE" },
+    );
+    expect(sameGender.hold.seatGenders["1B"]).toBe("FEMALE");
+  });
+
+  it("rejects mixed genders inside the same adjacent seat pair", async () => {
+    await expect(
+      selectSeats(
+        s,
+        "group-user",
+        tripId,
+        ["1C", "1D"],
+        "mixed-pair-key",
+        { "1C": "FEMALE", "1D": "MALE" },
+      ),
+    ).rejects.toThrow("same gender");
+    expect(await col(s, "holds").countDocuments({ active: true })).toBe(0);
+  });
+
   it("keeps the original deadline and replays idempotent selection", async () => {
     const first = await selectSeats(s, "u1", tripId, ["1A"], "first-key");
     const replay = await selectSeats(s, "u1", tripId, ["1A"], "first-key");
