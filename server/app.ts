@@ -197,6 +197,22 @@ export function createApp(getStore: () => Store | null, c: Config) {
     });
   });
   app.get("/api/auth/me", auth, (_q, r) => r.json(r.locals.user));
+  app.get("/api/locations", async (_q, r) => {
+    const s = store();
+    const filter = {
+      status: "PUBLISHED",
+      departureAt: { $gt: await now(s) },
+    };
+    const [from, to] = await Promise.all([
+      col(s, "trips").distinct("from", filter),
+      col(s, "trips").distinct("to", filter),
+    ]);
+    r.json({
+      locations: [...new Set([...from, ...to])]
+        .filter((value): value is string => typeof value === "string" && !!value.trim())
+        .sort((a, b) => a.localeCompare(b)),
+    });
+  });
   app.get("/api/trips", async (q, r) => {
     const filter: any = {
       status: "PUBLISHED",
@@ -239,6 +255,7 @@ export function createApp(getStore: () => Store | null, c: Config) {
         tripId: z.string().max(180),
         seatIds: seatSchema,
         seatGenders: z.record(seatIdSchema, genderSchema),
+        familyBooking: z.boolean().default(false),
       })
       .superRefine((value, ctx) => {
         const keys = Object.keys(value.seatGenders);
@@ -262,6 +279,7 @@ export function createApp(getStore: () => Store | null, c: Config) {
         input.seatIds,
         key,
         input.seatGenders,
+        input.familyBooking,
       ),
     );
   });
@@ -519,6 +537,33 @@ export function createApp(getStore: () => Store | null, c: Config) {
       ),
     );
   });
+  app.get("/api/admin/trips", auth, admin, async (q, r) => {
+    const s = store();
+    const time = await now(s);
+    const search =
+      typeof q.query.q === "string" ? q.query.q.trim().slice(0, 80) : "";
+    const status =
+      typeof q.query.status === "string" ? q.query.status.trim() : "";
+    const filter: any = { departureAt: { $gt: time } };
+
+    if (status === "PUBLISHED" || status === "STOPPED") filter.status = status;
+    if (search) {
+      const safe = search.replace(/[.*+?^${}()|[\]\\]/g, "\\  app.post("/api/admin/trips", auth, admin, async (q, r) => {");
+      filter.$or = [
+        { name: { $regex: safe, $options: "i" } },
+        { from: { $regex: safe, $options: "i" } },
+        { to: { $regex: safe, $options: "i" } },
+      ];
+    }
+
+    r.json(
+      await col(s, "trips")
+        .find(filter)
+        .sort({ createdAt: -1, departureAt: 1 })
+        .limit(250)
+        .toArray(),
+    );
+  });
   app.post("/api/admin/trips", auth, admin, async (q, r) => {
     const input = z
       .object({
@@ -548,6 +593,9 @@ export function createApp(getStore: () => Store | null, c: Config) {
         seats: 40,
         amenities: ["Air conditioning", "Charging port"],
         demo: true,
+        source: "ADMIN",
+        createdBy: r.locals.user._id,
+        createdAt: new Date(),
       };
     await sCreateTrip(store(), trip, r.locals.user._id);
     r.status(201).json(trip);
