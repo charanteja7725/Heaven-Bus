@@ -294,7 +294,8 @@ export function SeatPage() {
     [online, setOnline] = useState(false),
     [tick, setTick] = useState(Date.now()),
     [offset, setOffset] = useState(0),
-    [activeGender, setActiveGender] = useState<PassengerGender | null>(null);
+    [activeGender, setActiveGender] = useState<PassengerGender | null>(null),
+    [familyBooking, setFamilyBooking] = useState(false);
   const sequence = useRef(0);
   const load = async () => {
     const seq = ++sequence.current;
@@ -343,6 +344,7 @@ export function SeatPage() {
       )
     : 0;
   const selected = remaining ? (hold?.seatIds ?? []) : [];
+  const isFamilyBooking = hold?.familyBooking ?? familyBooking;
   function seatRestriction(seatId: string, gender = activeGender) {
     if (!gender) return null;
     const partnerId = adjacentSeatId(seatId);
@@ -350,11 +352,12 @@ export function SeatPage() {
 
     if (selected.includes(partnerId)) {
       const partnerGender = hold?.seatGenders?.[partnerId];
+      if (isFamilyBooking) return null;
       return partnerGender && partnerGender !== gender
         ? {
             partnerId,
             gender: partnerGender,
-            reason: `Seat ${seatId} must match the gender selected for adjacent seat ${partnerId}.`,
+            reason: `Seat ${seatId} must match the gender selected for adjacent seat ${partnerId}, unless this is a Family booking.`,
           }
         : null;
     }
@@ -420,6 +423,7 @@ export function SeatPage() {
           tripId: id,
           seatIds: next,
           seatGenders,
+          familyBooking: isFamilyBooking,
         }),
       });
       await load();
@@ -473,6 +477,27 @@ export function SeatPage() {
             </div>
             <BusFront size={30} />
           </div>
+          <div className="family-booking-card">
+            <label className="family-booking-toggle">
+              <input
+                type="checkbox"
+                checked={isFamilyBooking}
+                disabled={selected.length > 0}
+                onChange={(e) => setFamilyBooking(e.target.checked)}
+              />
+              <span>
+                <strong>Family booking</strong>
+                <small>
+                  Allow male and female family members to sit side by side within this same reservation.
+                </small>
+              </span>
+            </label>
+            {selected.length > 0 && (
+              <p>
+                Family mode is locked for this hold. Release all selected seats to change it.
+              </p>
+            )}
+          </div>
           <div className="gender-seat-picker">
             <div>
               <strong>Who is this seat for?</strong>
@@ -492,7 +517,7 @@ export function SeatPage() {
               ))}
             </div>
             <p>
-              Adjacent seats are restricted to the same gender once one seat in the pair is held or booked.
+              Adjacent seats are restricted to the same gender unless both seats belong to this same Family booking.
             </p>
           </div>
           <div className="seat-map-wrap">
@@ -643,6 +668,11 @@ export function SeatPage() {
                   {String(remaining % 60).padStart(2, "0")}
                 </strong>
               </div>
+              {isFamilyBooking && (
+                <div className="family-summary-chip">
+                  Family booking · mixed genders may sit together within this reservation
+                </div>
+              )}
               <div className="summary-row seat-assignment-summary">
                 <span>Your seats</span>
                 <strong>
