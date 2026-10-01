@@ -41,6 +41,13 @@ export async function initialize(s: Store) {
     col(s, "inbox").createIndex({ eventId: 1 }, { unique: true }),
     col(s, "outbox").createIndex({ sentAt: 1, createdAt: 1 }),
     col(s, "tracking").createIndex({ updatedAt: -1 }),
+    col(s, "passengerLocations").createIndex(
+      { tripId: 1, updatedAt: -1 },
+    ),
+    col(s, "passengerLocations").createIndex(
+      { userId: 1, bookingId: 1 },
+      { unique: true },
+    ),
     col(s, "emailNotifications").createIndex(
       { bookingId: 1, type: 1, day: 1 },
       { unique: true },
