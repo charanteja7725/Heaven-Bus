@@ -4450,3 +4450,150 @@ select:focus-visible {
     flex-direction: column;
   }
 }
+
+
+/* Gender-aware seat selection -------------------------------------------- */
+.gender-seat-picker {
+  margin: 22px 0 4px;
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--surface-2);
+}
+.gender-seat-picker > div:first-child {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+.gender-seat-picker strong { font-size: 13px; color: var(--text-strong); }
+.gender-seat-picker span,
+.gender-seat-picker p { font-size: 10px; color: var(--muted); }
+.gender-seat-picker p { margin: 10px 0 0; line-height: 1.55; }
+.gender-options {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+.gender-option {
+  min-height: 39px;
+  padding: 9px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  font-size: 11px;
+  font-weight: 700;
+  transition: transform .16s ease, border-color .16s ease, background .16s ease;
+}
+.gender-option:hover {
+  transform: translateY(-1px);
+  border-color: var(--border-strong);
+}
+.gender-option.active {
+  border-color: var(--primary);
+  background: var(--primary-soft);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--primary) 20%, transparent);
+}
+.gender-option.female.active {
+  color: #9e3f70;
+  border-color: #d488ad;
+  background: #fae8f1;
+}
+:root[data-theme="dark"] .gender-option.female.active {
+  color: #f2a9cb;
+  border-color: #8a4c69;
+  background: #341d29;
+}
+.gender-option.other.active {
+  color: #7057a7;
+  border-color: #a99bd0;
+  background: #f0ecfb;
+}
+:root[data-theme="dark"] .gender-option.other.active {
+  color: #c3b5ef;
+  border-color: #66578f;
+  background: #28213a;
+}
+.seat-legend i.booked-female,
+.seat.booked-female {
+  color: #a34173;
+  background: #f6d7e7;
+  border-color: #dc8eb6;
+}
+:root[data-theme="dark"] .seat-legend i.booked-female,
+:root[data-theme="dark"] .seat.booked-female {
+  color: #f0a7cb;
+  background: #442033;
+  border-color: #8f4f70;
+}
+.seat-legend i.restricted,
+.seat.restricted {
+  color: var(--muted-2);
+  background:
+    repeating-linear-gradient(
+      135deg,
+      var(--surface-2),
+      var(--surface-2) 5px,
+      var(--surface-3) 5px,
+      var(--surface-3) 10px
+    );
+  border-color: var(--border-strong);
+}
+.seat.restricted:disabled { opacity: .72; }
+.seat.selected.female {
+  background: linear-gradient(145deg, #c35a8b, #99466e);
+  border-color: #b85180;
+}
+.seat.selected.other {
+  background: linear-gradient(145deg, #7562a8, #5f4d91);
+  border-color: #7562a8;
+}
+.seat-gender-badge {
+  position: absolute;
+  top: 3px;
+  right: 3px;
+  width: 14px;
+  height: 14px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  font-size: 7px;
+  line-height: 1;
+  color: currentColor;
+  background: color-mix(in srgb, currentColor 12%, transparent);
+  border: 1px solid color-mix(in srgb, currentColor 28%, transparent);
+}
+.seat-assignment-summary { align-items: flex-start; }
+.seat-assignment-summary > strong {
+  display: flex;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.seat-assignment-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 5px 7px;
+  border-radius: 999px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  font-size: 9px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.gender-field { min-width: 125px; }
+.gender-field select:disabled {
+  opacity: 1;
+  color: var(--text);
+  background: var(--surface-2);
+}
+@media (max-width: 760px) {
+  .gender-seat-picker > div:first-child { display: block; }
+  .gender-seat-picker > div:first-child span { display: block; margin-top: 4px; }
+  .gender-options { gap: 6px; }
+  .gender-option { padding: 8px 6px; }
+  .field-row { flex-wrap: wrap; }
+  .gender-field { min-width: 100%; }
+}
