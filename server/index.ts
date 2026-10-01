@@ -1,6 +1,8 @@
 import "dotenv/config";
 import { createServer } from "node:http";
+import { randomUUID } from "node:crypto";
 import { MongoClient } from "mongodb";
+import bcrypt from "bcryptjs";
 import { Server } from "socket.io";
 import { createApp, type Config } from "./app.js";
 import { col, initialize, type Store } from "./db.js";
@@ -62,6 +64,35 @@ io.on("connection", (socket) => {
 http.listen(Number(process.env.PORT ?? 4000), "0.0.0.0", () =>
   console.log("HEAVEN-BUS API listening"),
 );
+
+async function ensureBootstrapAdmin(s: Store) {
+  const email = process.env.ADMIN_EMAIL?.trim().toLowerCase();
+  const password = process.env.ADMIN_PASSWORD;
+  if (!email && !password) return;
+  if (!email || !password || password.length < 12)
+    throw new Error(
+      "ADMIN_EMAIL and ADMIN_PASSWORD (minimum 12 characters) must both be configured",
+    );
+  const hash = await bcrypt.hash(password, 12);
+  const existing = await col(s, "users").findOne({ email });
+  if (existing) {
+    await col(s, "users").updateOne(
+      { _id: existing._id },
+      { $set: { role: "admin", password: hash } },
+    );
+  } else {
+    await col(s, "users").insertOne({
+      _id: randomUUID(),
+      email,
+      name: process.env.ADMIN_NAME?.trim() || "HEAVEN-BUS Admin",
+      password: hash,
+      role: "admin",
+      createdAt: new Date(),
+    });
+  }
+  console.log("Production administrator ready");
+}
+
 let connecting = false;
 async function connect() {
   if (store || connecting || !process.env.MONGODB_URI) return;
@@ -88,6 +119,8 @@ async function connect() {
       console.log("MongoDB startup: preparing demo schedules");
       await seed(candidate);
     }
+    stage = "admin-bootstrap";
+    await ensureBootstrapAdmin(candidate);
     store = candidate;
     console.log("MongoDB ready");
   } catch (e) {
