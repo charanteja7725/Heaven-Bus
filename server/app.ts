@@ -8,6 +8,8 @@ import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import { AppError, col, now, type Store } from "./db.js";
 import {
+  cancelBooking,
+  cancellationQuote,
   finalize,
   release,
   selectSeats,
@@ -342,25 +344,42 @@ export function createApp(getStore: () => Store | null, c: Config) {
       ),
     );
   });
-  app.get("/api/bookings", auth, async (_q, r) =>
+  app.get("/api/bookings", auth, async (_q, r) => {
+    const s = store();
+    const bookings = await col(s, "bookings")
+      .find({ userId: r.locals.user._id })
+      .sort({ createdAt: -1 })
+      .toArray();
     r.json({
-      bookings: await col(store(), "bookings")
+      bookings: await Promise.all(
+        bookings.map(async (booking) => ({
+          ...booking,
+          cancellation: await cancellationQuote(s, booking),
+        })),
+      ),
+      refunds: await col(s, "refunds")
         .find({ userId: r.locals.user._id })
         .sort({ createdAt: -1 })
         .toArray(),
-      refunds: await col(store(), "refunds")
-        .find({ userId: r.locals.user._id })
-        .sort({ createdAt: -1 })
-        .toArray(),
-    }),
-  );
+    });
+  });
   app.get("/api/bookings/:id", auth, async (q, r) => {
-    const b = await col(store(), "bookings").findOne({
+    const s = store();
+    const b = await col(s, "bookings").findOne({
       _id: String(q.params.id),
       userId: r.locals.user._id,
     });
     if (!b) throw new AppError(404, "Booking not found");
-    r.json(b);
+    r.json({ ...b, cancellation: await cancellationQuote(s, b) });
+  });
+  app.post("/api/bookings/:id/cancel", auth, async (q, r) => {
+    r.json(
+      await cancelBooking(
+        store(),
+        r.locals.user._id,
+        String(q.params.id),
+      ),
+    );
   });
   app.post(
     "/api/jarvis",
@@ -405,6 +424,7 @@ export function createApp(getStore: () => Store | null, c: Config) {
     ]);
     const totals = await col(s, "bookings")
       .aggregate([
+        { $match: { status: "CONFIRMED" } },
         {
           $group: {
             _id: null,
@@ -457,6 +477,35 @@ export function createApp(getStore: () => Store | null, c: Config) {
       };
     await sCreateTrip(store(), trip, r.locals.user._id);
     r.status(201).json(trip);
+  });
+  app.post("/api/admin/trips/:id/stop", auth, admin, async (q, r) => {
+    r.json(
+      await sSetTripStatus(
+        store(),
+        String(q.params.id),
+        "STOPPED",
+        r.locals.user._id,
+      ),
+    );
+  });
+  app.post("/api/admin/trips/:id/resume", auth, admin, async (q, r) => {
+    r.json(
+      await sSetTripStatus(
+        store(),
+        String(q.params.id),
+        "PUBLISHED",
+        r.locals.user._id,
+      ),
+    );
+  });
+  app.delete("/api/admin/trips/:id", auth, admin, async (q, r) => {
+    r.json(
+      await sRemoveTrip(
+        store(),
+        String(q.params.id),
+        r.locals.user._id,
+      ),
+    );
   });
   app.use(
     (
@@ -516,6 +565,149 @@ async function sCreateTrip(s: Store, trip: any, actor: string) {
         },
         { session },
       );
+    });
+  } finally {
+    await session.endSession();
+  }
+}
+
+async function sSetTripStatus(
+  s: Store,
+  tripId: string,
+  status: "PUBLISHED" | "STOPPED",
+  actor: string,
+) {
+  const session = s.client.startSession();
+  try {
+    return await session.withTransaction(async () => {
+      const trip = await col(s, "trips").findOne({ _id: tripId }, { session });
+      if (!trip) throw new AppError(404, "Trip not found");
+      const time = await now(s, session);
+      if (new Date(trip.departureAt) <= time)
+        throw new AppError(409, "This departure has already started.");
+
+      if (status === "STOPPED") {
+        const activeHolds = await col(s, "holds")
+          .find({ tripId, active: true }, { session })
+          .toArray();
+        if (activeHolds.length) {
+          await col(s, "holds").updateMany(
+            { tripId, active: true },
+            { $set: { active: false, state: "TRIP_STOPPED" } },
+            { session },
+          );
+          await col(s, "seats").updateMany(
+            { tripId, state: "HELD" },
+            {
+              $set: { state: "AVAILABLE", holdId: null, expiresAt: null },
+              $inc: { version: 1 },
+            },
+            { session },
+          );
+        }
+      }
+
+      await col(s, "trips").updateOne(
+        { _id: tripId },
+        {
+          $set: {
+            status,
+            ...(status === "STOPPED"
+              ? { stoppedAt: time, stoppedBy: actor }
+              : { resumedAt: time, resumedBy: actor }),
+          },
+        },
+        { session },
+      );
+
+      await col(s, "outbox").insertOne(
+        {
+          _id: randomUUID(),
+          tripId,
+          createdAt: time,
+          sentAt: null,
+        },
+        { session },
+      );
+      await col(s, "audit").insertOne(
+        {
+          _id: randomUUID(),
+          actor,
+          action: status === "STOPPED" ? "STOP_TRIP" : "RESUME_TRIP",
+          tripId,
+          createdAt: time,
+        },
+        { session },
+      );
+      return { ok: true, status };
+    });
+  } finally {
+    await session.endSession();
+  }
+}
+
+async function sRemoveTrip(s: Store, tripId: string, actor: string) {
+  const session = s.client.startSession();
+  try {
+    return await session.withTransaction(async () => {
+      const trip = await col(s, "trips").findOne({ _id: tripId }, { session });
+      if (!trip) throw new AppError(404, "Trip not found");
+
+      const [bookings, holds, riskyOrders] = await Promise.all([
+        col(s, "bookings").countDocuments(
+          { "trip._id": tripId, status: "CONFIRMED" },
+          { session },
+        ),
+        col(s, "holds").countDocuments({ tripId, active: true }, { session }),
+        col(s, "orders").countDocuments(
+          {
+            _id: {
+              $in: (
+                await col(s, "holds")
+                  .find({ tripId }, { session, projection: { _id: 1 } })
+                  .toArray()
+              ).map((h) => h._id),
+            },
+            status: {
+              $in: ["CREATING", "CREATION_IN_PROGRESS", "CREATION_UNKNOWN", "READY"],
+            },
+          },
+          { session },
+        ),
+      ]);
+
+      if (bookings)
+        throw new AppError(
+          409,
+          "This trip has confirmed tickets. Stop sales instead of removing it.",
+          "TRIP_HAS_BOOKINGS",
+        );
+      if (holds || riskyOrders)
+        throw new AppError(
+          409,
+          "This trip still has active reservations or payment activity. Stop sales first and try again after they clear.",
+          "TRIP_BUSY",
+        );
+
+      await col(s, "seats").deleteMany({ tripId }, { session });
+      await col(s, "trips").deleteOne({ _id: tripId }, { session });
+      await col(s, "audit").insertOne(
+        {
+          _id: randomUUID(),
+          actor,
+          action: "REMOVE_TRIP",
+          tripId,
+          trip: {
+            from: trip.from,
+            to: trip.to,
+            departureAt: trip.departureAt,
+            name: trip.name,
+          },
+          createdAt: new Date(),
+        },
+        { session },
+      );
+      return { ok: true, removed: true };
     });
   } finally {
     await session.endSession();
