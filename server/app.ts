@@ -27,7 +27,8 @@ import { supportDirectory, supportDisclaimer } from "./support.js";
 import {
   cityCoordinates,
   getTripTracking,
-  recordTripLocation,
+  recordPassengerLocation,
+  stopPassengerLocation,
 } from "./tracking.js";
 export type Config = {
   secret: string;
@@ -453,6 +454,35 @@ export function createApp(getStore: () => Store | null, c: Config) {
     });
   });
 
+  app.post("/api/bookings/:id/location", auth, async (q, r) => {
+    const input = z
+      .object({
+        lat: z.number().min(-90).max(90),
+        lng: z.number().min(-180).max(180),
+        accuracy: z.number().nonnegative().max(5000).optional(),
+        speedKph: z.number().nonnegative().max(250).optional(),
+        heading: z.number().min(0).max(360).optional(),
+      })
+      .parse(q.body);
+    r.json(
+      await recordPassengerLocation(
+        store(),
+        String(q.params.id),
+        r.locals.user._id,
+        input,
+      ),
+    );
+  });
+  app.delete("/api/bookings/:id/location", auth, async (q, r) => {
+    r.json(
+      await stopPassengerLocation(
+        store(),
+        String(q.params.id),
+        r.locals.user._id,
+      ),
+    );
+  });
+
   app.post("/api/bookings/:id/cancel", auth, async (q, r) => {
     r.json(
       await cancelBooking(
@@ -547,27 +577,6 @@ export function createApp(getStore: () => Store | null, c: Config) {
       serverNow: time,
     });
   });
-  app.post("/api/admin/trips/:id/location", auth, admin, async (q, r) => {
-    const input = z
-      .object({
-        lat: z.number().min(-90).max(90),
-        lng: z.number().min(-180).max(180),
-        accuracy: z.number().nonnegative().max(5000).optional(),
-        speedKph: z.number().nonnegative().max(250).optional(),
-        heading: z.number().min(0).max(360).optional(),
-        label: z.string().trim().max(120).optional(),
-      })
-      .parse(q.body);
-    r.json(
-      await recordTripLocation(
-        store(),
-        String(q.params.id),
-        r.locals.user._id,
-        input,
-      ),
-    );
-  });
-
   app.post("/api/admin/refunds/:id/approve", auth, admin, async (q, r) => {
     r.json(
       await sReviewRefund(
