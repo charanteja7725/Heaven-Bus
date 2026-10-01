@@ -962,9 +962,15 @@ export function BookingsPage() {
                       </p>
                       <button
                         className="button button-outline full"
-                        disabled={!b.cancellation?.allowed || cancelBusy === b._id}
+                        disabled={cancelBusy === b._id}
                         onClick={async () => {
-                          if (!b.cancellation?.allowed) return;
+                          if (!b.cancellation?.allowed) {
+                            notify(
+                              b.cancellation?.reason ??
+                                "This ticket is not eligible for cancellation.",
+                            );
+                            return;
+                          }
                           const ok = window.confirm(
                             `Cancel booking ${b.reference}? Refund: ${money(b.cancellation.refundAmount)} (${b.cancellation.refundPercent}%). This cannot be undone.`,
                           );
@@ -1141,6 +1147,13 @@ export function TicketPage() {
                 className="button button-outline"
                 disabled={busy}
                 onClick={async () => {
+                  if (!booking.cancellation?.allowed) {
+                    notify(
+                      booking.cancellation?.reason ??
+                        "This ticket is not eligible for cancellation.",
+                    );
+                    return;
+                  }
                   const ok = window.confirm(
                     `Cancel this confirmed ticket? Refund: ${money(booking.cancellation.refundAmount)} (${booking.cancellation.refundPercent}%). This cannot be undone.`,
                   );
@@ -1162,7 +1175,21 @@ export function TicketPage() {
               </button>
             </>
           ) : (
-            <p className="muted">{booking.cancellation?.reason}</p>
+            <>
+              <p className="muted">{booking.cancellation?.reason}</p>
+              <button
+                className="button button-outline"
+                onClick={() =>
+                  notify(
+                    booking.cancellation?.reason ??
+                      "This ticket is not eligible for cancellation.",
+                  )
+                }
+              >
+                <XCircle size={17} />
+                Cancellation unavailable
+              </button>
+            </>
           )}
         </section>
       )}
