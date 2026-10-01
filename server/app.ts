@@ -370,7 +370,14 @@ export function createApp(getStore: () => Store | null, c: Config) {
       userId: r.locals.user._id,
     });
     if (!b) throw new AppError(404, "Booking not found");
-    r.json({ ...b, cancellation: await cancellationQuote(s, b) });
+    r.json({
+      ...b,
+      cancellation: await cancellationQuote(s, b),
+      refund: await col(s, "refunds").findOne({
+        holdId: b.holdId,
+        userId: r.locals.user._id,
+      }),
+    });
   });
   app.post("/api/bookings/:id/cancel", auth, async (q, r) => {
     r.json(
