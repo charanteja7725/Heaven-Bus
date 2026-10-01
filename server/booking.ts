@@ -465,7 +465,6 @@ export async function cancelBooking(
       { _id: payment.providerId },
       {
         $setOnInsert: {
-          _id: payment.providerId,
           holdId: booking.holdId,
           userId,
           mode: booking.paymentMode,
