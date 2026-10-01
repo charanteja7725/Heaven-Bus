@@ -1,4 +1,4 @@
-import { col, type Store } from "./db.js";
+import { col, transaction, type Store } from "./db.js";
 export const cities = [
   "Bengaluru",
   "Chennai",
@@ -9,6 +9,7 @@ export const cities = [
   "Madurai",
   "Coimbatore",
 ];
+
 export async function seed(s: Store) {
   const routes = [
     ["Bengaluru", "Chennai", 6.5, 699],
@@ -24,6 +25,7 @@ export async function seed(s: Store) {
     new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" }) +
       "T00:00:00+05:30",
   );
+  const trips: any[] = [];
   for (let day = 0; day < 14; day++)
     for (const [a, b, duration, fare] of routes)
       for (const reverse of [false, true])
@@ -36,50 +38,41 @@ export async function seed(s: Store) {
           const date = new Date(departure.getTime() + 19800000)
             .toISOString()
             .slice(0, 10);
-          const id = `${from}-${to}-${date}-${service}`;
-          const exists = await col(s, "trips").findOne(
-            { _id: id },
-            { projection: { _id: 1 } },
-          );
-          if (exists) continue;
-          await col(s, "trips").updateOne(
-            { _id: id },
-            {
-              $setOnInsert: {
-                _id: id,
-                from,
-                to,
-                date,
-                departureAt: departure,
-                arrivalAt: new Date(departure.getTime() + duration * 3600000),
-                duration,
-                fare: (fare + service * 200) * 100,
-                name: service ? "Heaven Nightline" : "Heaven Express",
-                type: service ? "AC Premium Seater" : "AC Seater",
-                amenities: [
-                  "Air conditioning",
-                  "Charging port",
-                  "Water bottle",
-                ],
-                status: "PUBLISHED",
-                seats: 40,
-                demo: true,
-              },
-            },
-            { upsert: true },
-          );
-          await col(s, "seats").bulkWrite(
-            Array.from({ length: 40 }, (_, i) => ({
+          trips.push({
+            _id: `${from}-${to}-${date}-${service}`,
+            from,
+            to,
+            date,
+            departureAt: departure,
+            arrivalAt: new Date(departure.getTime() + duration * 3600000),
+            duration,
+            fare: (fare + service * 200) * 100,
+            name: service ? "Heaven Nightline" : "Heaven Express",
+            type: service ? "AC Premium Seater" : "AC Seater",
+            amenities: ["Air conditioning", "Charging port", "Water bottle"],
+            status: "PUBLISHED",
+            seats: 40,
+            demo: true,
+          });
+        }
+  // Batched transactions avoid thousands of network round trips. Repeated seeding
+  // also repairs interrupted old seeds; $setOnInsert preserves all existing holds
+  // and bookings. A published new trip and its inventory commit together.
+  for (let offset = 0; offset < trips.length; offset += 32) {
+    const batch = trips.slice(offset, offset + 32);
+    await transaction(s, async (session) => {
+      await col(s, "seats").bulkWrite(
+        batch.flatMap((trip) =>
+          Array.from({ length: 40 }, (_, i) => {
+            const seatId = `${Math.floor(i / 4) + 1}${"ABCD"[i % 4]}`;
+            return {
               updateOne: {
-                filter: {
-                  tripId: id,
-                  seatId: `${Math.floor(i / 4) + 1}${"ABCD"[i % 4]}`,
-                },
+                filter: { tripId: trip._id, seatId },
                 update: {
                   $setOnInsert: {
-                    _id: `${id}:${i}`,
-                    tripId: id,
-                    seatId: `${Math.floor(i / 4) + 1}${"ABCD"[i % 4]}`,
+                    _id: `${trip._id}:${i}`,
+                    tripId: trip._id,
+                    seatId,
                     state: "AVAILABLE",
                     holdId: null,
                     expiresAt: null,
@@ -88,7 +81,21 @@ export async function seed(s: Store) {
                 },
                 upsert: true,
               },
-            })),
-          );
-        }
+            };
+          }),
+        ),
+        { session },
+      );
+      await col(s, "trips").bulkWrite(
+        batch.map((trip) => ({
+          updateOne: {
+            filter: { _id: trip._id },
+            update: { $setOnInsert: trip },
+            upsert: true,
+          },
+        })),
+        { session },
+      );
+    });
+  }
 }

@@ -67,28 +67,43 @@ async function connect() {
   if (store || connecting || !process.env.MONGODB_URI) return;
   connecting = true;
   let client: MongoClient | undefined;
+  let stage = "connect";
   try {
+    console.log("MongoDB startup: connecting");
     client = new MongoClient(process.env.MONGODB_URI, {
       serverSelectionTimeoutMS: 8000,
       maxPoolSize: 30,
     });
     await client.connect();
+    stage = "indexes";
+    console.log("MongoDB startup: connected; creating indexes");
     const candidate = {
       client,
       db: client.db(process.env.MONGODB_DB ?? "heaven_bus"),
       holdMs: 300000,
     };
     await initialize(candidate);
-    if (process.env.SEED_DEMO === "true") await seed(candidate);
+    if (process.env.SEED_DEMO === "true") {
+      stage = "seed";
+      console.log("MongoDB startup: preparing demo schedules");
+      await seed(candidate);
+    }
     store = candidate;
     console.log("MongoDB ready");
   } catch (e) {
-    console.error("MongoDB connection failed; retry scheduled");
+    const error = e as { name?: string; code?: unknown };
+    console.error("MongoDB startup failed; retry scheduled", {
+      stage,
+      name: typeof error.name === "string" ? error.name : "UnknownError",
+      code: typeof error.code === "number" ? error.code : undefined,
+    });
     await client?.close();
   } finally {
     connecting = false;
   }
 }
+if (!process.env.MONGODB_URI)
+  console.error("MongoDB setup required: MONGODB_URI is missing");
 await connect();
 let cleaning = false,
   publishing = false,

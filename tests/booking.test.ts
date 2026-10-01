@@ -24,6 +24,7 @@ import { createApp } from "../server/app";
 import { askJarvis } from "../server/jarvis";
 import { createOrder, reconcile, validSignature } from "../server/payments";
 import { createHmac } from "node:crypto";
+import { seed } from "../server/seed";
 let repl: MongoMemoryReplSet, client: MongoClient, s: Store;
 const tripId = "test-trip";
 afterEach(() => vi.unstubAllGlobals());
@@ -104,6 +105,30 @@ async function forceExpiry(id: string) {
   );
 }
 describe("database-enforced booking safety", () => {
+  it("repairs interrupted seed inventory without resetting booked seats", async () => {
+    const day = new Date().toLocaleDateString("en-CA", {
+      timeZone: "Asia/Kolkata",
+    });
+    const id = `Bengaluru-Chennai-${day}-0`;
+    await col(s, "trips").insertOne({
+      _id: id,
+      demo: true,
+      status: "PUBLISHED",
+    });
+    await col(s, "seats").insertOne({
+      _id: `${id}:0`,
+      tripId: id,
+      seatId: "1A",
+      state: "BOOKED",
+      bookingId: "existing-booking",
+    });
+    await seed(s);
+    expect(await col(s, "seats").countDocuments({ tripId: id })).toBe(40);
+    expect(
+      (await col(s, "seats").findOne({ tripId: id, seatId: "1A" }))!.state,
+    ).toBe("BOOKED");
+    expect(await col(s, "trips").countDocuments({ demo: true })).toBe(448);
+  }, 60000);
   it("500 simultaneous claimants produce exactly one owner", async () => {
     const results = await Promise.allSettled(
       Array.from({ length: 500 }, (_, i) =>
