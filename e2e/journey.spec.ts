@@ -103,6 +103,12 @@ test("passenger registers, searches, holds, pays and prints a persistent ticket"
   await expect(
     page.getByRole("heading", { name: "Scheduled position" }),
   ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Share my live location" }),
+  ).toBeVisible();
+  await expect(
+    page.getByText(/confirmed passengers can opt in/i),
+  ).toBeVisible();
   await page.screenshot({
     path: "test-results/confirmed-ticket.png",
     fullPage: true,
@@ -134,13 +140,6 @@ test("Jarvis returns inventory and follows up on a budget", async ({
   await expect(page.getByText("Toilet & Sanitation Supervisor")).toBeVisible();
 });
 test("admin sees operations and can publish a trip", async ({ page }) => {
-  await page.context().grantPermissions(["geolocation"], {
-    origin: "http://localhost:5173",
-  });
-  await page.context().setGeolocation({
-    latitude: 12.9716,
-    longitude: 77.5946,
-  });
   await page.goto("/login");
   await page.getByLabel("Email address").fill("admin@heaven.test");
   await page
@@ -168,10 +167,9 @@ test("admin sees operations and can publish a trip", async ({ page }) => {
   const createdRow = page
     .getByRole("row")
     .filter({ hasText: "Searchable QA Express" });
-  await createdRow.getByRole("button", { name: "Broadcast GPS" }).click();
   await expect(
-    createdRow.getByRole("button", { name: "Stop GPS" }),
-  ).toBeVisible();
+    createdRow.getByRole("button", { name: "Broadcast GPS" }),
+  ).toHaveCount(0);
 });
 test("mobile landing page has no horizontal overflow", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
