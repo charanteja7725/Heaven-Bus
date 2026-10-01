@@ -110,12 +110,29 @@ export default function App() {
         </Link>
         <nav className={menu ? "nav open" : "nav"}>
           <Link
-            className={location.pathname === "/search" ? "active" : ""}
+            className={
+              ["/search", "/trip/", "/checkout/"].some((path) =>
+                location.pathname.startsWith(path),
+              )
+                ? "active"
+                : ""
+            }
             to="/search"
           >
             Find a bus
           </Link>
-          <Link to="/bookings">My journeys</Link>
+          <Link
+            className={
+              ["/bookings", "/ticket/"].some((path) =>
+                location.pathname.startsWith(path),
+              )
+                ? "active"
+                : ""
+            }
+            to="/bookings"
+          >
+            My journeys
+          </Link>
           <button
             className="nav-jarvis"
             onClick={() => {
@@ -126,7 +143,14 @@ export default function App() {
             <Sparkles size={16} /> Ask Jarvis{" "}
             <span className="tiny-pill">NEW</span>
           </button>
-          {user?.role === "admin" && <Link to="/admin">Operations</Link>}
+          {user?.role === "admin" && (
+            <Link
+              className={location.pathname === "/admin" ? "active" : ""}
+              to="/admin"
+            >
+              Operations
+            </Link>
+          )}
         </nav>
         <div className="header-actions">
           <button
