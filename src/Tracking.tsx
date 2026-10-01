@@ -46,20 +46,7 @@ export default function TrackingPage() {
   useEffect(() => {
     load();
     const timer = setInterval(load, 15000);
-    const socket = io(API || window.location.origin, {
-      transports: ["websocket"],
-    });
-    socket.on("connect", () => {
-      setOnline(true);
-      const tripId = data?.tracking?.tripId;
-      if (tripId) socket.emit("subscribe", tripId);
-    });
-    socket.on("disconnect", () => setOnline(false));
-    socket.on("tracking:changed", load);
-    return () => {
-      clearInterval(timer);
-      socket.disconnect();
-    };
+    return () => clearInterval(timer);
   }, [id]);
 
   useEffect(() => {
@@ -74,7 +61,9 @@ export default function TrackingPage() {
     });
     socket.on("disconnect", () => setOnline(false));
     socket.on("tracking:changed", load);
-    return () => socket.disconnect();
+    return () => {
+      socket.disconnect();
+    };
   }, [data?.tracking?.tripId]);
 
   const tracking = data?.tracking;
