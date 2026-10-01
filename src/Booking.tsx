@@ -981,7 +981,7 @@ export function BookingsPage() {
                               method: "POST",
                             });
                             notify(
-                              `Booking cancelled. Refund requested: ${money(result.refundAmount)}.`,
+                              `Booking cancelled. Refund request ${money(result.refundAmount)} is awaiting admin approval.`,
                             );
                             await load();
                           } catch (e) {
@@ -1018,12 +1018,8 @@ export function BookingsPage() {
                         : "Seat hold expired"}
                     </p>
                   </div>
-                  <span className="status">
-                    {r.status === "COMPLETED"
-                      ? "Refunded"
-                      : r.status === "UNKNOWN"
-                        ? "Under review"
-                        : "Refund pending"}
+                  <span className={`status ${r.status === "COMPLETED" ? "success" : ""}`}>
+                    {refundStatusLabel(r)}
                   </span>
                 </div>
               ))}
@@ -1034,6 +1030,26 @@ export function BookingsPage() {
     </div>
   );
 }
+function refundStatusLabel(refund: any) {
+  if (!refund) return "Refund status unavailable";
+  switch (refund.status) {
+    case "PENDING_APPROVAL":
+      return "Awaiting admin approval";
+    case "PENDING":
+      return "Approved · Processing";
+    case "SUBMITTED":
+      return "Approved · Submitted";
+    case "COMPLETED":
+      return "Refunded";
+    case "REJECTED":
+      return "Refund rejected";
+    case "UNKNOWN":
+      return "Under review";
+    default:
+      return String(refund.status ?? "Refund pending").replaceAll("_", " ");
+  }
+}
+
 function ArrowUpRightIcon() {
   return <ArrowRight size={17} />;
 }
@@ -1072,7 +1088,9 @@ export function TicketPage() {
         <h1>{booking.status === "CANCELLED" ? "Your journey was cancelled." : "You’re on your way."}</h1>
         <p>
           {booking.status === "CANCELLED"
-            ? `${booking.refundPercent}% refund requested: ${money(booking.refundAmount ?? 0)}.`
+            ? booking.refund?.status === "REJECTED"
+              ? `Refund request declined: ${booking.refund.rejectionReason ?? "Please contact support for details."}`
+              : `${booking.refundPercent}% refund request · ${money(booking.refundAmount ?? 0)} · ${refundStatusLabel(booking.refund)}.`
             : "Something good is waiting at the other end."}
         </p>
       </div>
@@ -1124,7 +1142,7 @@ export function TicketPage() {
           <ShieldCheck size={19} />
           <p>
             {booking.status === "CANCELLED"
-              ? `Cancellation recorded. Refund: ${money(booking.refundAmount ?? 0)} (${booking.refundPercent ?? 0}%).`
+              ? `Cancellation recorded. Refund: ${money(booking.refundAmount ?? 0)} (${booking.refundPercent ?? 0}%) · ${refundStatusLabel(booking.refund)}.`
               : <>Demo ticket · Not valid for travel.{" "}
                   {booking.paymentMode === "sandbox"
                     ? "No real money was charged."
@@ -1136,7 +1154,7 @@ export function TicketPage() {
         <section className="panel" style={{ marginTop: 20 }}>
           <h2>Cancellation policy</h2>
           <p className="muted">
-            100% refund at least 24 hours before departure · 50% refund from 6–24 hours · cancellation closes inside 6 hours.
+            100% refund at least 24 hours before departure · 50% refund from 6–24 hours · cancellation closes inside 6 hours. Eligible refunds are submitted for administrator approval.
           </p>
           {booking.cancellation?.allowed ? (
             <>
@@ -1161,7 +1179,7 @@ export function TicketPage() {
                   setBusy(true);
                   try {
                     const result = await api(`/bookings/${id}/cancel`, { method: "POST" });
-                    notify(`Booking cancelled. Refund requested: ${money(result.refundAmount)}.`);
+                    notify(`Booking cancelled. Refund request ${money(result.refundAmount)} is awaiting admin approval.`);
                     await load();
                   } catch (e) {
                     setError((e as Error).message);
