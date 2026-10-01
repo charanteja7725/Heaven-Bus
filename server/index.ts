@@ -1,8 +1,6 @@
 import "dotenv/config";
 import { createServer } from "node:http";
-import { randomUUID } from "node:crypto";
 import { MongoClient } from "mongodb";
-import bcrypt from "bcryptjs";
 import { Server } from "socket.io";
 import { createApp, type Config } from "./app.js";
 import { col, initialize, type Store } from "./db.js";
@@ -67,29 +65,17 @@ http.listen(Number(process.env.PORT ?? 4000), "0.0.0.0", () =>
 
 async function ensureBootstrapAdmin(s: Store) {
   const email = process.env.ADMIN_EMAIL?.trim().toLowerCase();
-  const password = process.env.ADMIN_PASSWORD;
-  if (!email && !password) return;
-  if (!email || !password || password.length < 12)
-    throw new Error(
-      "ADMIN_EMAIL and ADMIN_PASSWORD (minimum 12 characters) must both be configured",
-    );
-  const hash = await bcrypt.hash(password, 12);
+  if (!email) return;
   const existing = await col(s, "users").findOne({ email });
-  if (existing) {
+  if (!existing) {
+    console.log("Administrator bootstrap waiting for account registration");
+    return;
+  }
+  if (existing.role !== "admin")
     await col(s, "users").updateOne(
       { _id: existing._id },
-      { $set: { role: "admin", password: hash } },
+      { $set: { role: "admin" } },
     );
-  } else {
-    await col(s, "users").insertOne({
-      _id: randomUUID(),
-      email,
-      name: process.env.ADMIN_NAME?.trim() || "HEAVEN-BUS Admin",
-      password: hash,
-      role: "admin",
-      createdAt: new Date(),
-    });
-  }
   console.log("Production administrator ready");
 }
 
