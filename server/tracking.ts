@@ -2,6 +2,18 @@ import { randomUUID } from "node:crypto";
 import { AppError, col, now, transaction, type Store } from "./db.js";
 
 type Point = { lat: number; lng: number; label: string };
+type PassengerLocationInput = {
+  lat: number;
+  lng: number;
+  accuracy?: number;
+  speedKph?: number;
+  heading?: number;
+};
+
+const FRESH_PASSENGER_MS = 2 * 60 * 1000;
+const STALE_PASSENGER_MS = 10 * 60 * 1000;
+const SHARE_BEFORE_MS = 2 * 60 * 60 * 1000;
+const SHARE_AFTER_MS = 2 * 60 * 60 * 1000;
 
 export const cityCoordinates: Record<string, Point> = {
   Bengaluru: { lat: 12.9716, lng: 77.5946, label: "Bengaluru" },
@@ -15,6 +27,14 @@ export const cityCoordinates: Record<string, Point> = {
 };
 
 const clamp = (value: number) => Math.max(0, Math.min(1, value));
+
+function median(values: number[]) {
+  const sorted = [...values].sort((a, b) => a - b);
+  const middle = Math.floor(sorted.length / 2);
+  return sorted.length % 2
+    ? sorted[middle]
+    : (sorted[middle - 1] + sorted[middle]) / 2;
+}
 
 function coordinatesForTrip(trip: any) {
   const origin =
@@ -48,6 +68,176 @@ function routeProgress(location: any, origin?: Point, destination?: Point) {
   );
 }
 
+function shareWindow(trip: any, clock: Date) {
+  const departure = new Date(trip.departureAt);
+  const arrival = new Date(trip.arrivalAt);
+  const opensAt = new Date(departure.getTime() - SHARE_BEFORE_MS);
+  const closesAt = new Date(arrival.getTime() + SHARE_AFTER_MS);
+  return {
+    opensAt,
+    closesAt,
+    canShare: clock >= opensAt && clock <= closesAt,
+  };
+}
+
+async function recomputePassengerAggregate(
+  s: Store,
+  tripId: string,
+  clock: Date,
+  session: any,
+) {
+  const cutoff = new Date(clock.getTime() - FRESH_PASSENGER_MS);
+  const reports = await col(s, "passengerLocations")
+    .find(
+      {
+        tripId,
+        updatedAt: { $gte: cutoff },
+        accuracy: { $lte: 1500 },
+      },
+      { session },
+    )
+    .toArray();
+
+  if (!reports.length) {
+    await col(s, "tracking").deleteOne({ _id: tripId }, { session });
+    return null;
+  }
+
+  const speeds = reports
+    .map((report) => Number(report.speedKph))
+    .filter((value) => Number.isFinite(value) && value >= 0);
+  const accuracies = reports
+    .map((report) => Number(report.accuracy))
+    .filter((value) => Number.isFinite(value) && value >= 0);
+
+  const aggregate = {
+    _id: tripId,
+    tripId,
+    lat: median(reports.map((report) => Number(report.lat))),
+    lng: median(reports.map((report) => Number(report.lng))),
+    accuracy: accuracies.length ? median(accuracies) : null,
+    speedKph: speeds.length ? median(speeds) : null,
+    heading: null,
+    label: "Passenger-shared bus position",
+    source: "PASSENGER_CROWD_GPS",
+    contributors: reports.length,
+    updatedAt: clock,
+  };
+
+  await col(s, "tracking").replaceOne({ _id: tripId }, aggregate, {
+    upsert: true,
+    session,
+  });
+  return aggregate;
+}
+
+async function publishTrackingChanged(
+  s: Store,
+  tripId: string,
+  clock: Date,
+  session: any,
+) {
+  await col(s, "outbox").insertOne(
+    {
+      _id: randomUUID(),
+      kind: "TRACKING_CHANGED",
+      tripId,
+      createdAt: clock,
+      sentAt: null,
+    },
+    { session },
+  );
+}
+
+export async function recordPassengerLocation(
+  s: Store,
+  bookingId: string,
+  userId: string,
+  input: PassengerLocationInput,
+) {
+  return transaction(s, async (session) => {
+    const booking = await col(s, "bookings").findOne(
+      { _id: bookingId, userId, status: "CONFIRMED" },
+      { session },
+    );
+    if (!booking)
+      throw new AppError(404, "Confirmed journey not found");
+
+    const clock = await now(s, session);
+    const window = shareWindow(booking.trip, clock);
+    if (!window.canShare)
+      throw new AppError(
+        409,
+        "Passenger location sharing opens two hours before departure and closes two hours after scheduled arrival.",
+        "LOCATION_SHARING_CLOSED",
+      );
+
+    const report = {
+      _id: bookingId,
+      bookingId,
+      userId,
+      tripId: booking.trip._id,
+      lat: input.lat,
+      lng: input.lng,
+      accuracy: input.accuracy ?? 1500,
+      speedKph: input.speedKph ?? null,
+      heading: input.heading ?? null,
+      updatedAt: clock,
+    };
+    await col(s, "passengerLocations").replaceOne({ _id: bookingId }, report, {
+      upsert: true,
+      session,
+    });
+
+    const aggregate = await recomputePassengerAggregate(
+      s,
+      booking.trip._id,
+      clock,
+      session,
+    );
+    await publishTrackingChanged(s, booking.trip._id, clock, session);
+
+    return {
+      ok: true,
+      tripId: booking.trip._id,
+      contributors: aggregate?.contributors ?? 0,
+      updatedAt: clock,
+    };
+  });
+}
+
+export async function stopPassengerLocation(
+  s: Store,
+  bookingId: string,
+  userId: string,
+) {
+  return transaction(s, async (session) => {
+    const booking = await col(s, "bookings").findOne(
+      { _id: bookingId, userId },
+      { session },
+    );
+    if (!booking) throw new AppError(404, "Journey not found");
+    const clock = await now(s, session);
+
+    await col(s, "passengerLocations").deleteOne(
+      { _id: bookingId, userId },
+      { session },
+    );
+    const aggregate = await recomputePassengerAggregate(
+      s,
+      booking.trip._id,
+      clock,
+      session,
+    );
+    await publishTrackingChanged(s, booking.trip._id, clock, session);
+
+    return {
+      ok: true,
+      contributors: aggregate?.contributors ?? 0,
+    };
+  });
+}
+
 export async function getTripTracking(s: Store, tripId: string) {
   const [trip, clock, live] = await Promise.all([
     col(s, "trips").findOne({ _id: tripId }),
@@ -69,24 +259,29 @@ export async function getTripTracking(s: Store, tripId: string) {
         ? "ARRIVED"
         : "IN_TRANSIT";
   const { origin, destination } = coordinatesForTrip(trip);
-  const liveFresh =
-    live?.updatedAt &&
-    clock.getTime() - new Date(live.updatedAt).getTime() <= 10 * 60 * 1000;
+  const liveAge = live?.updatedAt
+    ? clock.getTime() - new Date(live.updatedAt).getTime()
+    : Number.POSITIVE_INFINITY;
+  const liveFresh = liveAge <= FRESH_PASSENGER_MS;
+  const liveStale = liveAge <= STALE_PASSENGER_MS;
+  const window = shareWindow(trip, clock);
 
   let location: any = null;
   let source = "SCHEDULE";
   let progress: number | null = scheduledProgress;
+  let contributors = 0;
 
-  if (liveFresh) {
+  if (phase === "IN_TRANSIT" && liveFresh) {
     location = {
       lat: Number(live.lat),
       lng: Number(live.lng),
       accuracy: live.accuracy ?? null,
       speedKph: live.speedKph ?? null,
-      heading: live.heading ?? null,
-      label: live.label ?? "Bus GPS position",
+      heading: null,
+      label: live.label ?? "Passenger-shared bus position",
     };
-    source = "LIVE_GPS";
+    source = "PASSENGER_LIVE_GPS";
+    contributors = Number(live.contributors ?? 1);
     progress = routeProgress(location, origin, destination) ?? scheduledProgress;
   } else if (trip.demo && origin && destination) {
     location = {
@@ -104,16 +299,17 @@ export async function getTripTracking(s: Store, tripId: string) {
     };
     source =
       phase === "IN_TRANSIT" ? "DEMO_SIMULATION" : "SCHEDULE";
-  } else if (live) {
+  } else if (phase === "IN_TRANSIT" && liveStale) {
     location = {
       lat: Number(live.lat),
       lng: Number(live.lng),
       accuracy: live.accuracy ?? null,
       speedKph: live.speedKph ?? null,
-      heading: live.heading ?? null,
-      label: live.label ?? "Last known bus position",
+      heading: null,
+      label: "Last passenger-shared bus position",
     };
-    source = "STALE_GPS";
+    source = "STALE_PASSENGER_GPS";
+    contributors = Number(live.contributors ?? 1);
     progress = routeProgress(location, origin, destination) ?? scheduledProgress;
   }
 
@@ -124,6 +320,8 @@ export async function getTripTracking(s: Store, tripId: string) {
     serverNow: clock,
     lastUpdated: live?.updatedAt ?? null,
     progress: Math.round((progress ?? 0) * 100),
+    contributors,
+    sharing: window,
     origin: origin ?? { label: trip.from },
     destination: destination ?? { label: trip.to },
     location,
@@ -140,52 +338,4 @@ export async function getTripTracking(s: Store, tripId: string) {
       arrivalAt: trip.arrivalAt,
     },
   };
-}
-
-export async function recordTripLocation(
-  s: Store,
-  tripId: string,
-  adminId: string,
-  input: {
-    lat: number;
-    lng: number;
-    accuracy?: number;
-    speedKph?: number;
-    heading?: number;
-    label?: string;
-  },
-) {
-  return transaction(s, async (session) => {
-    const trip = await col(s, "trips").findOne({ _id: tripId }, { session });
-    if (!trip) throw new AppError(404, "Trip not found");
-    const time = await now(s, session);
-    const tracking = {
-      _id: tripId,
-      tripId,
-      lat: input.lat,
-      lng: input.lng,
-      accuracy: input.accuracy ?? null,
-      speedKph: input.speedKph ?? null,
-      heading: input.heading ?? null,
-      label: input.label?.trim() || "Live bus GPS",
-      source: "LIVE_GPS",
-      updatedAt: time,
-      updatedBy: adminId,
-    };
-    await col(s, "tracking").replaceOne({ _id: tripId }, tracking, {
-      upsert: true,
-      session,
-    });
-    await col(s, "outbox").insertOne(
-      {
-        _id: randomUUID(),
-        kind: "TRACKING_CHANGED",
-        tripId,
-        createdAt: time,
-        sentAt: null,
-      },
-      { session },
-    );
-    return tracking;
-  });
 }
