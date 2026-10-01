@@ -26,6 +26,11 @@ import { askJarvis } from "../server/jarvis";
 import { createOrder, reconcile, validSignature } from "../server/payments";
 import { createHmac } from "node:crypto";
 import { seed } from "../server/seed";
+import {
+  getTripTracking,
+  recordTripLocation,
+} from "../server/tracking";
+import { processJourneyDayEmails } from "../server/notifications";
 let repl: MongoMemoryReplSet, client: MongoClient, s: Store;
 const tripId = "test-trip";
 afterEach(() => vi.unstubAllGlobals());
@@ -57,6 +62,8 @@ beforeEach(async () => {
     "inbox",
     "idempotency",
     "audit",
+    "tracking",
+    "emailNotifications",
   ])
     await col(s, name).deleteMany({});
   const departure = new Date(Date.now() + 86400000);
@@ -131,6 +138,96 @@ describe("database-enforced booking safety", () => {
     ).toBe("BOOKED");
     expect(await col(s, "trips").countDocuments({ demo: true })).toBe(448);
   }, 60000);
+  it("persists the passenger journey email through confirmation", async () => {
+    const { hold } = await selectSeats(
+      s,
+      "email-user",
+      tripId,
+      ["1A"],
+      "email-booking-key",
+      { "1A": "FEMALE" },
+    );
+    await startPayment(
+      s,
+      "email-user",
+      hold._id,
+      [{ name: "Email Passenger", age: 28, gender: "FEMALE" }],
+      "9876543210",
+      "sandbox",
+      "passenger@example.test",
+    );
+    const confirmed = await finalize(
+      s,
+      hold._id,
+      "pay-email-booking",
+      hold.amount,
+      "INR",
+    );
+    expect(confirmed.booking.notificationEmail).toBe(
+      "passenger@example.test",
+    );
+  });
+
+  it("uses real operator GPS for passenger journey tracking", async () => {
+    await recordTripLocation(s, tripId, "admin-user", {
+      lat: 12.95,
+      lng: 79.4,
+      accuracy: 8,
+      speedKph: 54,
+      heading: 90,
+      label: "Operator live GPS",
+    });
+    const tracking = await getTripTracking(s, tripId);
+    expect(tracking.source).toBe("LIVE_GPS");
+    expect(tracking.location?.lat).toBe(12.95);
+    expect(tracking.location?.speedKph).toBe(54);
+  });
+
+  it("sends a journey-day email exactly once when provider is configured", async () => {
+    const departure = new Date();
+    departure.setMinutes(departure.getMinutes() + 30);
+    const arrival = new Date(departure.getTime() + 6 * 3600000);
+    const bookingId = "journey-email-booking";
+    await col(s, "bookings").insertOne({
+      _id: bookingId,
+      holdId: bookingId,
+      userId: "journey-email-user",
+      status: "CONFIRMED",
+      notificationEmail: "journey@example.test",
+      reference: "HB-EMAIL01",
+      seatIds: ["1A"],
+      trip: {
+        _id: tripId,
+        name: "Heaven Express",
+        from: "Bengaluru",
+        to: "Chennai",
+        departureAt: departure,
+        arrivalAt: arrival,
+      },
+    });
+    const send = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ id: "email-provider-1" }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+    vi.stubGlobal("fetch", send);
+    const config = {
+      apiKey: "test-email-key",
+      from: "HEAVEN-BUS <journeys@example.test>",
+      appUrl: "https://heaven-bus.example.test",
+    };
+    const first = await processJourneyDayEmails(s, config);
+    const second = await processJourneyDayEmails(s, config);
+    expect(first.sent).toBe(1);
+    expect(second.sent).toBe(0);
+    expect(send).toHaveBeenCalledTimes(1);
+    expect(
+      (await col(s, "bookings").findOne({ _id: bookingId }))!
+        .journeyDayEmailStatus,
+    ).toBe("SENT");
+  });
+
   it("500 simultaneous claimants produce exactly one owner", async () => {
     const results = await Promise.allSettled(
       Array.from({ length: 500 }, (_, i) =>
