@@ -87,6 +87,9 @@ test("passenger registers, searches, holds, pays and prints a persistent ticket"
   await page.getByLabel("Full name").fill("Journey Tester");
   await page.getByLabel("Age", { exact: true }).fill("24");
   await page.getByLabel("Contact number").fill("9876543210");
+  await expect(page.getByLabel("Journey notification email")).toHaveValue(
+    /journey-.*@example\.test/,
+  );
   await page.getByRole("button", { name: "Continue to payment" }).click();
   await page.reload();
   await page.getByRole("button", { name: /Simulate payment/ }).click();
@@ -95,6 +98,9 @@ test("passenger registers, searches, holds, pays and prints a persistent ticket"
   ).toBeVisible();
   await page.reload();
   await expect(page.getByText("Seat 1A", { exact: true })).toBeVisible();
+  await page.getByRole("link", { name: "Live journey" }).click();
+  await expect(page.getByLabel("Live journey route map")).toBeVisible();
+  await expect(page.getByText(/Scheduled position|Demo simulated movement/)).toBeVisible();
   await page.screenshot({
     path: "test-results/confirmed-ticket.png",
     fullPage: true,
@@ -118,8 +124,21 @@ test("Jarvis returns inventory and follows up on a budget", async ({
   await page.getByLabel("Message Jarvis").fill("under 500");
   await page.getByRole("button", { name: "Send message", exact: true }).click();
   await expect(page.getByText(/couldn’t find an available trip/)).toBeVisible();
+  await page
+    .getByLabel("Message Jarvis")
+    .fill("The toilet is dirty and has no water");
+  await page.getByRole("button", { name: "Send message", exact: true }).click();
+  await expect(page.getByText("1800-000-1007")).toBeVisible();
+  await expect(page.getByText("Toilet & Sanitation Supervisor")).toBeVisible();
 });
 test("admin sees operations and can publish a trip", async ({ page }) => {
+  await page.context().grantPermissions(["geolocation"], {
+    origin: "http://localhost:5173",
+  });
+  await page.context().setGeolocation({
+    latitude: 12.9716,
+    longitude: 77.5946,
+  });
   await page.goto("/login");
   await page.getByLabel("Email address").fill("admin@heaven.test");
   await page
@@ -144,6 +163,13 @@ test("admin sees operations and can publish a trip", async ({ page }) => {
   await page.getByLabel("Search created trips").fill("Searchable QA");
   await expect(page.getByText("Searchable QA Express")).toBeVisible();
   await expect(page.getByText("Created here")).toBeVisible();
+  const createdRow = page
+    .getByRole("row")
+    .filter({ hasText: "Searchable QA Express" });
+  await createdRow.getByRole("button", { name: "Broadcast GPS" }).click();
+  await expect(
+    createdRow.getByRole("button", { name: "Stop GPS" }),
+  ).toBeVisible();
 });
 test("mobile landing page has no horizontal overflow", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
