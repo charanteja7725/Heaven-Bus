@@ -457,7 +457,7 @@ export async function cancelBooking(
 
     await col(s, "payments").updateOne(
       { _id: payment._id },
-      { $set: { outcome: "REFUND_PENDING" } },
+      { $set: { outcome: "REFUND_AWAITING_APPROVAL" } },
       { session },
     );
 
@@ -475,7 +475,8 @@ export async function cancelBooking(
           amount: policy.refundAmount,
           originalAmount: booking.amount,
           reason: "PASSENGER_CANCELLATION",
-          status: "PENDING",
+          status: "PENDING_APPROVAL",
+          requestedAt: time,
           nextAttemptAt: time,
         },
       },
@@ -488,6 +489,7 @@ export async function cancelBooking(
       status: "CANCELLED",
       refundPercent: policy.refundPercent,
       refundAmount: policy.refundAmount,
+      refundStatus: "PENDING_APPROVAL",
       cancelledAt: time,
     };
   });
