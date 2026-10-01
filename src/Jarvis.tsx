@@ -1,8 +1,29 @@
 import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
-import { Sparkles, X, ArrowUp, ArrowRight, Mic, RotateCcw } from "lucide-react";
-import { api, money, time, type Trip } from "./lib";
-type Message = { role: "user" | "assistant"; text: string; trips?: Trip[] };
+import {
+  Sparkles,
+  X,
+  ArrowUp,
+  ArrowRight,
+  Mic,
+  RotateCcw,
+  PhoneCall,
+  ShieldAlert,
+} from "lucide-react";
+import {
+  api,
+  money,
+  time,
+  type Trip,
+  type SupportContact,
+} from "./lib";
+type Message = {
+  role: "user" | "assistant";
+  text: string;
+  trips?: Trip[];
+  supportContacts?: SupportContact[];
+  supportDisclaimer?: string;
+};
 export default function Jarvis({
   initialPrompt,
   onClose,
@@ -37,7 +58,13 @@ export default function Jarvis({
       setContext(result.context);
       setMessages((m) => [
         ...m,
-        { role: "assistant", text: result.reply, trips: result.trips },
+        {
+          role: "assistant",
+          text: result.reply,
+          trips: result.trips,
+          supportContacts: result.supportContacts,
+          supportDisclaimer: result.supportDisclaimer,
+        },
       ]);
     } catch (e) {
       setMessages((m) => [
@@ -154,6 +181,33 @@ export default function Jarvis({
                   <ArrowRight size={16} />
                 </Link>
               ))}
+              {m.supportContacts?.length ? (
+                <div className="jarvis-support-list">
+                  {m.supportContacts.map((contact) => (
+                    <a
+                      href={`tel:${contact.phone.replace(/[^0-9+]/g, "")}`}
+                      className={`jarvis-support-card ${contact.priority === "urgent" ? "urgent" : ""}`}
+                      key={contact.id}
+                    >
+                      {contact.priority === "urgent" ? (
+                        <ShieldAlert size={16} />
+                      ) : (
+                        <PhoneCall size={16} />
+                      )}
+                      <span>
+                        <strong>{contact.role}</strong>
+                        <small>{contact.issue}</small>
+                      </span>
+                      <b>{contact.phone}</b>
+                    </a>
+                  ))}
+                  {m.supportDisclaimer && (
+                    <small className="jarvis-support-disclaimer">
+                      {m.supportDisclaimer}
+                    </small>
+                  )}
+                </div>
+              ) : null}
             </div>
           </div>
         ))}
@@ -163,6 +217,8 @@ export default function Jarvis({
               "Bengaluru to Chennai tomorrow",
               "A night bus to Goa from Bengaluru",
               "How do seat holds work?",
+              "The bus is delayed — who should I call?",
+              "The toilet is not clean",
             ].map((s) => (
               <button onClick={() => send(s)} key={s}>
                 {s}
@@ -213,7 +269,8 @@ export default function Jarvis({
         </button>
       </form>
       <p className="jarvis-disclaimer">
-        Searches HEAVEN-BUS inventory. You choose and confirm every booking.
+        Searches HEAVEN-BUS inventory and routes support issues to the responsible
+        desk. You choose and confirm every booking.
       </p>
     </aside>
   );
