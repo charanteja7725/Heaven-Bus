@@ -60,6 +60,13 @@ test("family booking allows mixed-gender passengers in one adjacent pair", async
 test("passenger registers, searches, holds, pays and prints a persistent ticket", async ({
   page,
 }) => {
+  await page.context().grantPermissions(["geolocation"], {
+    origin: "http://localhost:5173",
+  });
+  await page.context().setGeolocation({
+    latitude: 12.9716,
+    longitude: 77.5946,
+  });
   await page.goto("/login");
   await page.getByRole("button", { name: "Create an account" }).click();
   await page.getByLabel("Full name").fill("Journey Tester");
@@ -103,12 +110,16 @@ test("passenger registers, searches, holds, pays and prints a persistent ticket"
   await expect(
     page.getByRole("heading", { name: "Scheduled position" }),
   ).toBeVisible();
+  const locate = page.getByRole("button", { name: "Use my current location" });
+  await expect(locate).toBeVisible();
+  await locate.click();
   await expect(
-    page.getByRole("button", { name: "Share my live location" }),
+    page.getByRole("heading", { name: /You are here → Chennai/ }),
   ).toBeVisible();
   await expect(
-    page.getByRole("heading", { name: "Help passengers see where the bus is." }),
+    page.getByLabel("Current location to destination"),
   ).toBeVisible();
+  await expect(page.getByText("Private journey view")).toBeVisible();
   await page.screenshot({
     path: "test-results/confirmed-ticket.png",
     fullPage: true,
