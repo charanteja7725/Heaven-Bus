@@ -4,7 +4,7 @@ A bus booking application for PS-07, Bus Seat Vanishing Act. React + TypeScript 
 
 ## Features
 
-- Passenger route search, live seat map, fixed five-minute holds, up to six seats, passenger details, checkout, history and printable tickets.
+- Passenger route search, live seat map, fixed five-minute holds, up to six seats, passenger details, checkout, history, printable tickets, and confirmed-ticket cancellation with time-based refunds.
 - Admin operations dashboard: bookings, active holds, scheduled trips, create departure, refunds and payment exceptions.
 - Ask Jarvis: conversational route search with follow-up context, dates, budget and evening filters, hold/refund guidance and optional browser voice input. Uses a deterministic parser and database queries, not an external LLM; it never invents trip inventory or books without confirmation.
 - Clearly labelled sandbox payment mode, plus Razorpay checkout, server verification, signed webhook inbox, recovery and compensating refunds.
@@ -88,8 +88,8 @@ Inventory: `GET /api/trips`, `GET /api/trips/:id`, `GET /api/trips/:id/seats`.
 Reservations: `POST /api/holds` (Idempotency-Key required), `GET /api/holds/current`, `GET/DELETE /api/holds/:id`.
 Payment: `POST /api/holds/:id/payment`, `POST /api/holds/:id/sandbox-pay`, `POST /api/holds/:id/verify`, `POST /api/webhooks/razorpay`.
 History: `GET /api/bookings`, `GET /api/bookings/:id`.
-Assistant: `POST /api/jarvis`. Operations: `GET /api/admin/overview`, `POST /api/admin/trips`.
+Assistant: `POST /api/jarvis`. Cancellation: `POST /api/bookings/:id/cancel`. Operations: `GET /api/admin/overview`, `POST /api/admin/trips`, `POST /api/admin/trips/:id/stop`, `POST /api/admin/trips/:id/resume`, `DELETE /api/admin/trips/:id`.
 
 ## Scope
 
-Full-route seated trips, INR, IST display, fixed five-minute holds and no confirmed-ticket cancellation. No operator integration, sleeper/segment inventory or real-money launch. Access tokens use sessionStorage and expire after eight hours. Add stronger session management, email verification, abuse controls, retention rules, external observability and operational support before a commercial launch.
+Full-route seated trips, INR, IST display, fixed five-minute holds, and confirmed-ticket cancellation (100% refund ≥24h, 50% from 6–24h, closed <6h). No operator integration, sleeper/segment inventory or real-money launch. Access tokens use sessionStorage and expire after eight hours. Add stronger session management, email verification, abuse controls, retention rules, external observability and operational support before a commercial launch.
