@@ -22,3 +22,9 @@ services:
         value: sandbox
       - key: SEED_DEMO
         value: true
+      - key: RESEND_API_KEY
+        sync: false
+      - key: JOURNEY_EMAIL_FROM
+        sync: false
+      - key: PUBLIC_APP_URL
+        sync: false
