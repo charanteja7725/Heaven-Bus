@@ -88,8 +88,17 @@ export type Hold = {
     gender: PassengerGender;
   }[];
   contact?: string;
+  notificationEmail?: string;
   order?: any;
   payment?: any;
   refunds?: any[];
 };
 export type User = { _id: string; name: string; email: string; role: string };
+
+export type SupportContact = {
+  id: string;
+  issue: string;
+  role: string;
+  phone: string;
+  priority: "normal" | "urgent";
+};
