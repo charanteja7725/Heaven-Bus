@@ -5494,3 +5494,226 @@ select:focus-visible {
     grid-template-columns: 1fr;
   }
 }
+
+
+/* Passenger current-location route --------------------------------------- */
+.personal-route-card {
+  margin-bottom: 20px;
+  overflow: hidden;
+}
+
+.personal-route-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+  margin-bottom: 15px;
+}
+
+.personal-route-heading h2 {
+  margin: 5px 0 5px;
+}
+
+.personal-route-heading p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 9px;
+}
+
+.personal-route-visual {
+  position: relative;
+  min-height: 250px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background:
+    radial-gradient(circle at 12% 45%, color-mix(in srgb, var(--primary-soft) 82%, transparent), transparent 25%),
+    radial-gradient(circle at 88% 45%, color-mix(in srgb, var(--accent-soft) 78%, transparent), transparent 25%),
+    var(--surface-2);
+}
+
+.personal-route-line {
+  position: absolute;
+  z-index: 2;
+  left: 14%;
+  right: 14%;
+  top: 50%;
+  height: 5px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--primary), var(--accent));
+  transform: translateY(-50%);
+}
+
+.personal-route-line::after {
+  content: "";
+  position: absolute;
+  inset: -5px 0;
+  border-radius: inherit;
+  border-top: 1px dashed color-mix(in srgb, var(--text) 20%, transparent);
+  opacity: .45;
+}
+
+.personal-route-point {
+  position: absolute;
+  z-index: 4;
+  top: 50%;
+  width: 44px;
+  height: 44px;
+  display: grid;
+  place-items: center;
+  border: 3px solid var(--surface);
+  border-radius: 50%;
+  box-shadow: var(--shadow-sm);
+  transform: translate(-50%, -50%);
+}
+
+.personal-route-point.current {
+  left: 14%;
+  color: white;
+  background: var(--primary);
+}
+
+.personal-route-point.destination {
+  left: 86%;
+  color: white;
+  background: var(--accent);
+}
+
+.personal-route-label {
+  position: absolute;
+  z-index: 4;
+  top: calc(50% + 38px);
+  width: min(245px, 38%);
+}
+
+.personal-route-label.current {
+  left: 7%;
+  text-align: left;
+}
+
+.personal-route-label.destination {
+  right: 7%;
+  text-align: right;
+}
+
+.personal-route-label small {
+  display: block;
+  color: var(--muted);
+  font-size: 7px;
+  font-weight: 800;
+  letter-spacing: .09em;
+}
+
+.personal-route-label strong {
+  display: block;
+  margin-top: 4px;
+  color: var(--text-strong);
+  font-size: 10px;
+  overflow-wrap: anywhere;
+}
+
+.personal-route-distance {
+  position: absolute;
+  z-index: 5;
+  top: 22%;
+  left: 50%;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  max-width: 76%;
+  padding: 9px 12px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--surface) 92%, transparent);
+  color: var(--text-strong);
+  box-shadow: var(--shadow-sm);
+  transform: translateX(-50%);
+  font-size: 9px;
+  font-weight: 750;
+  white-space: nowrap;
+}
+
+.personal-route-distance svg {
+  color: var(--primary);
+  flex: 0 0 auto;
+}
+
+.personal-route-stats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.personal-route-stats > div {
+  padding: 12px 13px;
+  border: 1px solid var(--border);
+  border-radius: 11px;
+  background: var(--surface);
+}
+
+.personal-route-stats small {
+  display: block;
+  color: var(--muted);
+  font-size: 7px;
+  font-weight: 800;
+  letter-spacing: .08em;
+}
+
+.personal-route-stats strong {
+  display: block;
+  margin-top: 5px;
+  color: var(--text-strong);
+  font-size: 10px;
+}
+
+@media (max-width: 680px) {
+  .personal-route-heading {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .personal-route-heading .button {
+    width: 100%;
+  }
+
+  .personal-route-visual {
+    min-height: 280px;
+  }
+
+  .personal-route-line {
+    left: 16%;
+    right: 16%;
+  }
+
+  .personal-route-point.current {
+    left: 16%;
+  }
+
+  .personal-route-point.destination {
+    left: 84%;
+  }
+
+  .personal-route-label {
+    width: 42%;
+  }
+
+  .personal-route-label.current {
+    left: 4%;
+  }
+
+  .personal-route-label.destination {
+    right: 4%;
+  }
+
+  .personal-route-distance {
+    top: 19%;
+    max-width: 90%;
+    white-space: normal;
+    text-align: center;
+  }
+
+  .personal-route-stats {
+    grid-template-columns: 1fr;
+  }
+}
