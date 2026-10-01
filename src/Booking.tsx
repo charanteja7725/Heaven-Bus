@@ -883,8 +883,10 @@ export function CheckoutPage() {
   );
 }
 export function BookingsPage() {
+  const { notify } = useApp();
   const [data, setData] = useState<any>(null),
-    [error, setError] = useState("");
+    [error, setError] = useState(""),
+    [cancelBusy, setCancelBusy] = useState("");
   const load = () =>
     api("/bookings")
       .then(setData)
@@ -950,10 +952,44 @@ export function BookingsPage() {
                     </span>
                     <strong>{money(b.amount)}</strong>
                   </div>
-                  {b.status === "CONFIRMED" && b.cancellation?.allowed && (
-                    <p className="muted small-text">
-                      Cancel now for a {b.cancellation.refundPercent}% refund.
-                    </p>
+                  {b.status === "CONFIRMED" && (
+                    <div className="panel" style={{ marginTop: 14, padding: 14 }}>
+                      <strong>Cancellation</strong>
+                      <p className="muted small-text">
+                        {b.cancellation?.allowed
+                          ? `Cancel now for a ${b.cancellation.refundPercent}% refund (${money(b.cancellation.refundAmount)}).`
+                          : b.cancellation?.reason ?? "Checking cancellation eligibility…"}
+                      </p>
+                      <button
+                        className="button button-outline full"
+                        disabled={!b.cancellation?.allowed || cancelBusy === b._id}
+                        onClick={async () => {
+                          if (!b.cancellation?.allowed) return;
+                          const ok = window.confirm(
+                            `Cancel booking ${b.reference}? Refund: ${money(b.cancellation.refundAmount)} (${b.cancellation.refundPercent}%). This cannot be undone.`,
+                          );
+                          if (!ok) return;
+                          setCancelBusy(b._id);
+                          try {
+                            const result = await api(`/bookings/${b._id}/cancel`, {
+                              method: "POST",
+                            });
+                            notify(
+                              `Booking cancelled. Refund requested: ${money(result.refundAmount)}.`,
+                            );
+                            await load();
+                          } catch (e) {
+                            notify((e as Error).message);
+                            await load();
+                          } finally {
+                            setCancelBusy("");
+                          }
+                        }}
+                      >
+                        <XCircle size={17} />
+                        {cancelBusy === b._id ? "Cancelling…" : "Cancel ticket"}
+                      </button>
+                    </div>
                   )}
                   <Link className="text-link" to={`/ticket/${b._id}`}>
                     {b.status === "CANCELLED" ? "View cancellation details" : "View your ticket"} <ArrowUpRightIcon />
