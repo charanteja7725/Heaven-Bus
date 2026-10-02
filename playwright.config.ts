@@ -6,8 +6,13 @@ export default defineConfig({
     baseURL: "http://localhost:5173",
     trace: "retain-on-failure",
     screenshot: "only-on-failure",
+    headless: process.env.PW_SHOWCASE ? false : undefined,
+    viewport: process.env.PW_SHOWCASE ? null : { width: 1280, height: 720 },
     launchOptions: process.env.PW_SHOWCASE
-      ? { slowMo: 180 }
+      ? {
+          slowMo: 500,
+          args: ["--start-maximized"],
+        }
       : undefined,
   },
   reporter: [["list"], ["html", { open: "never" }]],
