@@ -20,7 +20,7 @@ export default defineConfig({
     {
       command: "npx tsx tests/local-demo.ts",
       url: "http://localhost:4000/api/health/ready",
-      timeout: 180000,
+      timeout: process.env.PW_SHOWCASE ? 300000 : 180000,
       reuseExistingServer: !process.env.CI,
     },
     {
