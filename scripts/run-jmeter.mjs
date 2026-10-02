@@ -46,10 +46,15 @@ if (!uri || /mongodb:\/\/(?:127\.0\.0\.1|localhost)/i.test(uri)) {
   process.exit(1);
 }
 
-const check = spawnSync("jmeter", ["-v"], {
-  shell: true,
-  stdio: "ignore",
-});
+const isWindows = process.platform === "win32";
+
+const check = isWindows
+  ? spawnSync("cmd.exe", ["/d", "/s", "/c", "jmeter -v"], {
+      stdio: "ignore",
+    })
+  : spawnSync("jmeter", ["-v"], {
+      stdio: "ignore",
+    });
 if (check.status !== 0) {
   console.error("\n✗ Apache JMeter was not found in PATH.");
   console.error("Install Apache JMeter + Java, add JMeter's bin folder to PATH, then reopen PowerShell.");
@@ -76,14 +81,17 @@ await rm(reportDir, { recursive: true, force: true });
 await mkdir(reportDir, { recursive: true });
 await rm(resultFile, { force: true });
 
-const npx = process.platform === "win32" ? "npx.cmd" : "npx";
-const server = spawn(npx, ["tsx", "tests/local-demo.ts"], {
-  stdio: ["ignore", "pipe", "pipe"],
-  env: {
-    ...process.env,
-    PW_SHOWCASE: "1",
+const server = spawn(
+  process.execPath,
+  ["node_modules/tsx/dist/cli.mjs", "tests/local-demo.ts"],
+  {
+    stdio: ["ignore", "pipe", "pipe"],
+    env: {
+      ...process.env,
+      PW_SHOWCASE: "1",
+    },
   },
-});
+);
 
 server.stdout.on("data", (chunk) => process.stdout.write(`[SERVER] ${chunk}`));
 server.stderr.on("data", (chunk) => process.stderr.write(`[SERVER] ${chunk}`));
@@ -101,7 +109,14 @@ async function waitForReady() {
 }
 
 function stopServer() {
-  if (!server.killed) server.kill("SIGTERM");
+  if (server.killed) return;
+  if (isWindows && server.pid) {
+    spawnSync("taskkill.exe", ["/PID", String(server.pid), "/T", "/F"], {
+      stdio: "ignore",
+    });
+  } else {
+    server.kill("SIGTERM");
+  }
 }
 
 process.on("SIGINT", () => {
@@ -144,10 +159,22 @@ try {
     `-JsearchRamp=${profile.searchRamp}`,
   ];
 
-  const jmeter = spawn("jmeter", jmeterArgs, {
-    shell: true,
-    stdio: "inherit",
-  });
+  const jmeter = isWindows
+    ? spawn(
+        "cmd.exe",
+        [
+          "/d",
+          "/s",
+          "/c",
+          `jmeter ${jmeterArgs
+            .map((value) => `"${String(value).replaceAll('"', '""')}"`)
+            .join(" ")}`,
+        ],
+        { stdio: "inherit" },
+      )
+    : spawn("jmeter", jmeterArgs, {
+        stdio: "inherit",
+      });
 
   const code = await new Promise((resolve) => jmeter.on("close", resolve));
   if (code !== 0) {
