@@ -124,11 +124,8 @@ async function sendGmailSmtp(
 
   try {
     await new Promise<void>((resolve, reject) => {
-      if (socket.encrypted) resolve();
-      else {
-        socket.once("secureConnect", () => resolve());
-        socket.once("error", reject);
-      }
+      socket.once("secureConnect", () => resolve());
+      socket.once("error", reject);
     });
     await expect(220);
     await command("EHLO heaven-bus", 250);
