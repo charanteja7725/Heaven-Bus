@@ -367,16 +367,17 @@ describe("database-enforced booking safety", () => {
     ).toBe("SENT");
   });
 
-  it("500 simultaneous claimants produce exactly one owner", async () => {
+  it("simultaneous claimants produce exactly one owner", async () => {
+    const claimantCount = process.env.PW_SHOWCASE === "1" ? 50 : 500;
     const results = await Promise.allSettled(
-      Array.from({ length: 500 }, (_, i) =>
+      Array.from({ length: claimantCount }, (_, i) =>
         selectSeats(s, `u${i}`, tripId, ["1A"], `burst-${i}`),
       ),
     );
     expect(results.filter((r) => r.status === "fulfilled")).toHaveLength(1);
     expect(await col(s, "holds").countDocuments({ active: true })).toBe(1);
     expect(await col(s, "seats").countDocuments({ state: "HELD" })).toBe(1);
-  }, 60000);
+  }, process.env.PW_SHOWCASE === "1" ? 120000 : 60000);
   it("rolls back a whole conflicting group", async () => {
     await selectSeats(s, "u1", tripId, ["1B"], "first-key");
     await expect(
