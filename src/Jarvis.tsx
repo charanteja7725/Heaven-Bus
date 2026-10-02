@@ -23,6 +23,8 @@ type Message = {
   trips?: Trip[];
   supportContacts?: SupportContact[];
   supportDisclaimer?: string;
+  provider?: "rules" | "ollama";
+  model?: string;
 };
 export default function Jarvis({
   initialPrompt,
@@ -64,6 +66,8 @@ export default function Jarvis({
           trips: result.trips,
           supportContacts: result.supportContacts,
           supportDisclaimer: result.supportDisclaimer,
+          provider: result.provider,
+          model: result.model,
         },
       ]);
     } catch (e) {
@@ -163,6 +167,11 @@ export default function Jarvis({
             )}
             <div>
               <p>{m.text}</p>
+              {m.provider === "ollama" && (
+                <small className="jarvis-ai-source">
+                  Local AI · Ollama{m.model ? ` · ${m.model}` : ""}
+                </small>
+              )}
               {m.trips?.map((t) => (
                 <Link
                   className="jarvis-trip"
@@ -270,8 +279,8 @@ export default function Jarvis({
         </button>
       </form>
       <p className="jarvis-disclaimer">
-        Answers from HEAVEN-BUS rules and live inventory. Signed-in account questions
-        are limited to your own bookings and refunds. You choose and confirm every booking.
+        Live booking facts come from HEAVEN-BUS rules and inventory. Free-form help can
+        use local Ollama when enabled. You choose and confirm every booking.
       </p>
     </aside>
   );
