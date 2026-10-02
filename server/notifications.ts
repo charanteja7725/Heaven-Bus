@@ -223,16 +223,26 @@ export async function processBookingConfirmationEmails(
   config: JourneyEmailConfig,
 ) {
   const clock = await now(s);
+  const providerReady = Boolean(
+    (config.gmailUser && config.gmailAppPassword) ||
+      (config.apiKey && config.from),
+  );
+  if (!providerReady) return { checked: 0, sent: 0 };
+
   const bookings = await col(s, "bookings")
     .find({
       status: "CONFIRMED",
       notificationEmail: { $type: "string", $ne: "" },
       $or: [
         { confirmationEmailStatus: { $exists: false } },
+        { confirmationEmailStatus: "PENDING" },
+        { confirmationEmailStatus: "EMAIL_PROVIDER_NOT_CONFIGURED" },
         {
-          confirmationEmailStatus: {
-            $in: ["PENDING", "RETRY", "EMAIL_PROVIDER_NOT_CONFIGURED"],
-          },
+          confirmationEmailStatus: "RETRY",
+          $or: [
+            { confirmationEmailNextAttemptAt: { $exists: false } },
+            { confirmationEmailNextAttemptAt: { $lte: clock } },
+          ],
         },
       ],
     })
@@ -361,6 +371,7 @@ export async function processBookingConfirmationEmails(
               confirmationEmailStatus: "SENT",
               confirmationEmailSentAt: clock,
             },
+            $unset: { confirmationEmailNextAttemptAt: "" },
           },
         ),
       ]);
@@ -374,6 +385,12 @@ export async function processBookingConfirmationEmails(
         error instanceof Error
           ? error.message.slice(0, 500)
           : "Email delivery failed";
+      const attempts = Number(existing?.attempts ?? 0) + 1;
+      const delayMs = Math.min(
+        30 * 60_000,
+        30_000 * 2 ** Math.min(Math.max(attempts - 1, 0), 6),
+      );
+      const nextAttemptAt = new Date(clock.getTime() + delayMs);
       await Promise.all([
         col(s, "emailNotifications").updateOne(
           { _id: notificationId },
@@ -381,6 +398,7 @@ export async function processBookingConfirmationEmails(
             $set: {
               status: "RETRY",
               lastError: message,
+              nextAttemptAt,
             },
           },
         ),
@@ -389,12 +407,14 @@ export async function processBookingConfirmationEmails(
           {
             $set: {
               confirmationEmailStatus: "RETRY",
+              confirmationEmailNextAttemptAt: nextAttemptAt,
             },
           },
         ),
       ]);
       console.error("Booking confirmation email failed; retry scheduled", {
         bookingId: booking._id,
+        nextAttemptAt: nextAttemptAt.toISOString(),
       });
     }
   }
