@@ -17,7 +17,9 @@
     "admin": "tsx server/admin-cli.ts",
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
-    "test:e2e:report": "playwright show-report"
+    "test:e2e:report": "playwright show-report",
+    "test:e2e:headed": "playwright test --headed",
+    "test:all": "npm test && npm run test:e2e"
   },
   "dependencies": {
     "@vitejs/plugin-react": "^5.0.0",
