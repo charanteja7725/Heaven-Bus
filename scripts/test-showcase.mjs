@@ -1,4 +1,7 @@
-import "dotenv/config";
+import dotenv from "dotenv";
+
+dotenv.config({ path: ".env.showcase", override: false });
+dotenv.config({ override: false });
 import { readFileSync } from "node:fs";
 import { spawn } from "node:child_process";
 
@@ -137,12 +140,12 @@ if (process.env.CI) {
     section("SHOWCASE DATABASE CHECK");
     console.log(
       red(
-        "✗ Visible showcase needs a MongoDB Atlas URI in MONGODB_URI or SHOWCASE_MONGODB_URI.",
+        "✗ Visible showcase needs a MongoDB Atlas URI. Run: npm run showcase:configure",
       ),
     );
     console.log(
       yellow(
-        "This avoids the ~600 MB mongodb-memory-server download that previously stopped Chromium from opening.",
+        "The URI is stored only in local .env.showcase (ignored by Git). This avoids the ~600 MB mongodb-memory-server download that previously stopped Chromium from opening.",
       ),
     );
     process.exit(1);
