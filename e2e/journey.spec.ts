@@ -19,6 +19,46 @@ test("home route search autocompletes available locations", async ({ page }) => 
   await expect(to).toHaveValue("Chennai");
 });
 
+test("header sign-in opens auth, registration works, logout and login work", async ({
+  page,
+}) => {
+  const email = `auth-ui-${Date.now()}@example.test`;
+  const password = "Auth-ui-password-2026";
+
+  await page.goto("/");
+  await page.getByRole("link", { name: /Sign in/ }).click();
+  await expect(page).toHaveURL(/\/login$/);
+  await expect(
+    page.getByRole("heading", { name: "Good to see you." }),
+  ).toBeVisible();
+
+  await page.getByRole("button", { name: "Create an account" }).click();
+  await expect(
+    page.getByRole("heading", { name: "Make yourself at home." }),
+  ).toBeVisible();
+  await page.getByLabel("Full name").fill("Auth UI Tester");
+  await page.getByLabel("Email address").fill(email);
+  await page.getByLabel("Password", { exact: true }).fill(password);
+  await page
+    .getByRole("button", { name: "Create account", exact: true })
+    .click();
+
+  await expect(page).toHaveURL(/\/bookings$/);
+  await expect(page.getByText(/Hi, Auth/)).toBeVisible();
+
+  await page.getByRole("button", { name: "Sign out" }).click();
+  await expect(page).toHaveURL(/\/$/);
+  await expect(page.getByRole("link", { name: /Sign in/ })).toBeVisible();
+
+  await page.getByRole("link", { name: /Sign in/ }).click();
+  await page.getByLabel("Email address").fill(email);
+  await page.getByLabel("Password", { exact: true }).fill(password);
+  await page.getByRole("button", { name: "Sign in", exact: true }).click();
+
+  await expect(page).toHaveURL(/\/bookings$/);
+  await expect(page.getByText(/Hi, Auth/)).toBeVisible();
+});
+
 test("family booking allows mixed-gender passengers in one adjacent pair", async ({
   page,
 }) => {
