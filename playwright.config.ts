@@ -6,6 +6,9 @@ export default defineConfig({
     baseURL: "http://localhost:5173",
     trace: "retain-on-failure",
     screenshot: "only-on-failure",
+    launchOptions: process.env.PW_SHOWCASE
+      ? { slowMo: 180 }
+      : undefined,
   },
   reporter: [["list"], ["html", { open: "never" }]],
   webServer: [
