@@ -28,3 +28,9 @@ services:
         sync: false
       - key: PUBLIC_APP_URL
         sync: false
+      - key: GMAIL_USER
+        sync: false
+      - key: GMAIL_APP_PASSWORD
+        sync: false
+      - key: GMAIL_FROM_NAME
+        value: HEAVEN-BUS
