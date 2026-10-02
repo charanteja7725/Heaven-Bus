@@ -62,6 +62,52 @@ export function ErrorBox({
   );
 }
 
+export function TravelLoader({
+  title,
+  from = "HEAVEN-BUS",
+  to = "Almost there",
+  compact = false,
+}: {
+  title: string;
+  from?: string;
+  to?: string;
+  compact?: boolean;
+}) {
+  return (
+    <div
+      className={`travel-loader ${compact ? "compact" : ""}`}
+      role="status"
+      aria-live="polite"
+    >
+      <div className="travel-loader-route" aria-hidden="true">
+        <span className="travel-loader-stop start">
+          <i />
+        </span>
+        <span className="travel-loader-line">
+          <span className="travel-loader-progress" />
+        </span>
+        <span className="travel-loader-bus">
+          <BusFront size={21} />
+        </span>
+        <span className="travel-loader-stop end">
+          <i />
+        </span>
+      </div>
+      <div className="travel-loader-copy">
+        <strong>{title}</strong>
+        <span>
+          {from} <b>→</b> {to}
+        </span>
+      </div>
+      <div className="travel-loader-dots" aria-hidden="true">
+        <i />
+        <i />
+        <i />
+      </div>
+    </div>
+  );
+}
+
 function genderLabel(gender?: PassengerGender | null) {
   if (gender === "FEMALE") return "Female";
   if (gender === "MALE") return "Male";
@@ -81,9 +127,18 @@ function adjacentSeatId(seatId: string) {
   return `${match[1]}${partner[match[2]]}`;
 }
 
-export function TripCard({ trip: t }: { trip: Trip }) {
+export function TripCard({
+  trip: t,
+  index = 0,
+}: {
+  trip: Trip;
+  index?: number;
+}) {
   return (
-    <article className="trip-card">
+    <article
+      className="trip-card animated-trip-card"
+      style={{ animationDelay: `${Math.min(index, 7) * 70}ms` }}
+    >
       <div className="trip-top">
         <span className="operator-logo">
           <BusFront size={23} />
@@ -256,9 +311,15 @@ export function SearchPage() {
           {error ? (
             <ErrorBox message={error} retry={load} />
           ) : busy ? (
-            <div className="loading">Finding your next journey…</div>
+            <TravelLoader
+              title="Finding live buses for you"
+              from={from}
+              to={to}
+            />
           ) : filtered.length ? (
-            filtered.map((t) => <TripCard key={t._id} trip={t} />)
+            filtered.map((t, index) => (
+              <TripCard key={t._id} trip={t} index={index} />
+            ))
           ) : (
             <div className="empty-state compact">
               <BusFront size={38} />
@@ -441,7 +502,12 @@ export function SeatPage() {
         {error ? (
           <ErrorBox message={error} />
         ) : (
-          <div className="loading">Getting your bus ready…</div>
+          <TravelLoader
+            title="Getting your bus ready"
+            from="Live inventory"
+            to="Seat map"
+            compact
+          />
         )}
       </div>
     );
@@ -839,7 +905,12 @@ export function CheckoutPage() {
         {error ? (
           <ErrorBox message={error} retry={refresh} />
         ) : (
-          <div className="loading">Loading your reservation…</div>
+          <TravelLoader
+          title="Loading your reservation"
+          from="Seats held"
+          to="Checkout"
+          compact
+        />
         )}
       </div>
     );
@@ -1139,7 +1210,12 @@ export function BookingsPage() {
       {error ? (
         <ErrorBox message={error} retry={load} />
       ) : !data ? (
-        <div className="loading">Finding your journeys…</div>
+        <TravelLoader
+          title="Finding your journeys"
+          from="Your account"
+          to="My journeys"
+          compact
+        />
       ) : (
         <>
           {!data.bookings.length && !data.refunds.length ? (
@@ -1310,7 +1386,12 @@ export function TicketPage() {
         {error ? (
           <ErrorBox message={error} />
         ) : (
-          <div className="loading">Getting your ticket…</div>
+          <TravelLoader
+          title="Preparing your ticket"
+          from="Booking confirmed"
+          to="Your ticket"
+          compact
+        />
         )}
       </div>
     );
