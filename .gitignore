@@ -9,3 +9,6 @@ playwright-report/
 test-results/
 coverage/
 *.log
+performance/results/
+performance/report/
+performance/summary.json
