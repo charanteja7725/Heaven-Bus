@@ -1,3 +1,4 @@
+import "dotenv/config";
 import { readFileSync } from "node:fs";
 import { spawn } from "node:child_process";
 
@@ -115,7 +116,7 @@ const apiCommand =
   "npx vitest run tests/booking.test.ts --reporter=verbose";
 const playwrightCommand = process.env.CI
   ? "npx playwright test --reporter=list"
-  : "npx playwright test --headed --reporter=list";
+  : "npx playwright test --headed --workers=1 --reporter=list";
 
 let api;
 let e2e;
@@ -126,20 +127,24 @@ if (process.env.CI) {
     ? await run("PLAYWRIGHT FUNCTIONAL BROWSER TESTS", playwrightCommand)
     : { ok: false, output: "", code: -1 };
 } else {
-  section("FIRST-RUN TEST ENVIRONMENT CHECK");
-  console.log(
-    yellow(
-      "Ensuring the isolated MongoDB test runtime is available. On the first run this may download about 600 MB; later runs reuse the cache.",
-    ),
-  );
-  const prepared = await run(
-    "MONGODB TEST RUNTIME",
-    "node scripts/prepare-test-mongodb.mjs",
-  );
+  const showcaseMongoUri =
+    process.env.SHOWCASE_MONGODB_URI ?? process.env.MONGODB_URI;
 
-  if (!prepared.ok) {
-    section("FINAL QA RESULT");
-    console.log(red("✗ Could not prepare the local MongoDB test runtime."));
+  if (
+    !showcaseMongoUri ||
+    /mongodb:\/\/(?:127\.0\.0\.1|localhost)/i.test(showcaseMongoUri)
+  ) {
+    section("SHOWCASE DATABASE CHECK");
+    console.log(
+      red(
+        "✗ Visible showcase needs a MongoDB Atlas URI in MONGODB_URI or SHOWCASE_MONGODB_URI.",
+      ),
+    );
+    console.log(
+      yellow(
+        "This avoids the ~600 MB mongodb-memory-server download that previously stopped Chromium from opening.",
+      ),
+    );
     process.exit(1);
   }
 
@@ -147,7 +152,12 @@ if (process.env.CI) {
   section("VISIBLE BROWSER + TERMINAL TESTING");
   console.log(
     yellow(
-      "Chromium will open now while backend/API tests run in this terminal. Keep both visible.",
+      "Chromium is launching in headed mode. Browser scenarios run visibly one-by-one while API tests report in this terminal.",
+    ),
+  );
+  console.log(
+    yellow(
+      "The live-seat concurrency scenario switches between two traveller views so you can see the hold and release update.",
     ),
   );
 
