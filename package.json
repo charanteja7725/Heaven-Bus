@@ -22,12 +22,15 @@
     "test:all": "npm test && npm run test:e2e",
     "test:showcase": "node scripts/test-showcase.mjs",
     "showcase:configure": "node scripts/configure-showcase.mjs",
-    "test:performance": "node scripts/run-jmeter.mjs",
+    "test:performance": "node scripts/run-jmeter.mjs standard",
     "test:performance:gui": "jmeter -t performance/heaven-bus.jmx",
     "test:nonfunctional": "npm run test:performance",
     "ollama:setup": "node scripts/setup-ollama.mjs",
     "ollama:list": "ollama list",
-    "ollama:serve": "ollama serve"
+    "ollama:serve": "ollama serve",
+    "test:performance:quick": "node scripts/run-jmeter.mjs quick",
+    "test:performance:stress": "node scripts/run-jmeter.mjs stress",
+    "test:performance:report": "node scripts/open-performance-report.mjs"
   },
   "dependencies": {
     "@vitejs/plugin-react": "^5.0.0",
