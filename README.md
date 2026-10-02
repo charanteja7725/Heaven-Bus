@@ -111,6 +111,37 @@ npx playwright test
 
 Integration tests use a real disposable MongoDB replica set. They cover 500 contenders, group rollback, worker-independent expiry, stale release, duplicate confirmations, late payments, refunds, amount mismatch and authorization. Browser tests cover passenger booking, ticket reload, Jarvis, admin creation and mobile overflow. GitHub Actions runs the same build and tests on Ubuntu. See the Actions results for verified execution; adding a test does not establish that it passed.
 
+## Performance testing with Apache JMeter
+
+HEAVEN-BUS includes non-functional load/performance testing under `performance/heaven-bus.jmx`. The runner starts an isolated local API using the showcase Atlas database, executes JMeter in non-GUI mode, generates an HTML dashboard, calculates response-time percentiles/throughput/error rate, and applies pass/fail thresholds.
+
+```bash
+# Very small pre-demo sanity check
+npm run test:performance:quick
+
+# Standard evaluator/demo run
+npm run test:performance
+
+# Heavier local stress profile
+npm run test:performance:stress
+
+# Open the generated JMeter HTML dashboard
+npm run test:performance:report
+
+# Inspect the plan visually in JMeter
+npm run test:performance:gui
+```
+
+Default acceptance thresholds are **error rate ≤ 1%**, **overall P95 ≤ 2500 ms**, and **average response time ≤ 1500 ms**. Override them for an explicit environment using `PERF_MAX_ERROR_PCT`, `PERF_MAX_P95_MS`, and `PERF_MAX_AVG_MS`.
+
+Generated artifacts are intentionally ignored by Git:
+
+- `performance/report/index.html` — JMeter charts/dashboard.
+- `performance/summary.json` — machine-readable measurements and threshold results.
+- `performance/results/*.jtl` — raw JMeter samples.
+
+The quick/standard/stress profiles exercise health throughput and database-backed public route search without load-testing the deployed Render service.
+
 ## API overview
 
 Auth: `POST /api/auth/register`, `POST /api/auth/login`, `GET /api/auth/me`.
