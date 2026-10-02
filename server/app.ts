@@ -510,7 +510,14 @@ export function createApp(getStore: () => Store | null, c: Config) {
             .optional(),
         })
         .parse(q.body);
-      r.json(await askJarvis(store(), input.message, input.context));
+      r.json(
+        await askJarvis(
+          store(),
+          input.message,
+          input.context,
+          tokenUser(q)?.sub,
+        ),
+      );
     },
   );
   app.get("/api/admin/overview", auth, admin, async (_q, r) => {
