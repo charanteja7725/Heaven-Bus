@@ -472,6 +472,7 @@ export async function finalize(
       reference: `HB-${randomUUID().slice(0, 8).toUpperCase()}`,
       createdAt: time,
       paymentMode: order.mode,
+      confirmationEmailStatus: h.notificationEmail ? "PENDING" : "NO_EMAIL",
     };
     await col(s, "bookings").insertOne(booking, { session });
     await col(s, "holds").updateOne(
