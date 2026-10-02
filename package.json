@@ -20,7 +20,11 @@
     "test:e2e:report": "playwright show-report",
     "test:e2e:headed": "playwright test --headed",
     "test:all": "npm test && npm run test:e2e",
-    "test:showcase": "node scripts/test-showcase.mjs"
+    "test:showcase": "node scripts/test-showcase.mjs",
+    "showcase:configure": "node scripts/configure-showcase.mjs",
+    "test:performance": "node scripts/run-jmeter.mjs",
+    "test:performance:gui": "jmeter -t performance/heaven-bus.jmx",
+    "test:nonfunctional": "npm run test:performance"
   },
   "dependencies": {
     "@vitejs/plugin-react": "^5.0.0",
