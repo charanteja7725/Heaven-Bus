@@ -31,7 +31,10 @@ import {
   recordPassengerLocation,
   stopPassengerLocation,
 } from "../server/tracking";
-import { processJourneyDayEmails } from "../server/notifications";
+import {
+  processBookingConfirmationEmails,
+  processJourneyDayEmails,
+} from "../server/notifications";
 let repl: MongoMemoryReplSet, client: MongoClient, s: Store;
 const tripId = "test-trip";
 afterEach(() => vi.unstubAllGlobals());
@@ -228,6 +231,64 @@ describe("database-enforced booking safety", () => {
     expect(
       await col(s, "passengerLocations").findOne({ _id: "gps-booking-1" }),
     ).toBeNull();
+  });
+
+  it("sends a confirmation email after ticket confirmation", async () => {
+    const { hold } = await selectSeats(
+      s,
+      "confirm-email-user",
+      tripId,
+      ["2A"],
+      "confirm-email-key",
+      { "2A": "MALE" },
+    );
+    await startPayment(
+      s,
+      "confirm-email-user",
+      hold._id,
+      [{ name: "Confirmation Passenger", age: 24, gender: "MALE" }],
+      "9876543210",
+      "sandbox",
+      "confirm@example.test",
+    );
+    const confirmed = await finalize(
+      s,
+      hold._id,
+      "pay-confirm-email",
+      hold.amount,
+      "INR",
+    );
+    expect(confirmed.booking.confirmationEmailStatus).toBe("PENDING");
+
+    const send = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ id: "confirm-provider-1" }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+    vi.stubGlobal("fetch", send);
+
+    const result = await processBookingConfirmationEmails(s, {
+      apiKey: "test-email-key",
+      from: "HEAVEN-BUS <journeys@example.test>",
+      appUrl: "https://heaven-bus.example.test",
+    });
+
+    expect(result.sent).toBe(1);
+    expect(send).toHaveBeenCalledTimes(1);
+    expect(
+      (await col(s, "bookings").findOne({ _id: hold._id }))!
+        .confirmationEmailStatus,
+    ).toBe("SENT");
+    expect(
+      await col(s, "emailNotifications").findOne({
+        _id: `booking-confirmation:${hold._id}`,
+      }),
+    ).toMatchObject({
+      status: "SENT",
+      type: "BOOKING_CONFIRMATION",
+      email: "confirm@example.test",
+    });
   });
 
   it("sends a journey-day email exactly once when provider is configured", async () => {
