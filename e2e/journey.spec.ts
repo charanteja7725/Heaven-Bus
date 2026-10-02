@@ -142,7 +142,9 @@ test("Jarvis returns inventory and follows up on a budget", async ({
   await page.screenshot({ path: "test-results/jarvis-search.png" });
   await page.getByLabel("Message Jarvis").fill("under 500");
   await page.getByRole("button", { name: "Send message", exact: true }).click();
-  await expect(page.getByText(/couldn’t find an available trip/)).toBeVisible();
+  await expect(
+    page.getByText(/couldn’t find an available HEAVEN-BUS trip/),
+  ).toBeVisible();
   await page
     .getByLabel("Message Jarvis")
     .fill("The toilet is dirty and has no water");
