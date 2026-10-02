@@ -1,3 +1,4 @@
+import "dotenv/config";
 import {
   beforeAll,
   afterAll,
@@ -35,20 +36,39 @@ import {
   processBookingConfirmationEmails,
   processJourneyDayEmails,
 } from "../server/notifications";
-let repl: MongoMemoryReplSet, client: MongoClient, s: Store;
+let repl: MongoMemoryReplSet | undefined, client: MongoClient, s: Store;\nlet testDbName = "test";
 const tripId = "test-trip";
 afterEach(() => vi.unstubAllGlobals());
 beforeAll(async () => {
-  repl = await MongoMemoryReplSet.create({
-    replSet: { count: 1 },
-    binary: { version: "7.0.24" },
-  });
-  client = new MongoClient(repl.getUri(), { maxPoolSize: 100 });
-  await client.connect();
-  s = { client, db: client.db("test"), holdMs: 300000 };
+  const showcaseUri =
+    process.env.PW_SHOWCASE === "1"
+      ? process.env.SHOWCASE_MONGODB_URI ?? process.env.MONGODB_URI
+      : undefined;
+
+  if (
+    showcaseUri &&
+    !/mongodb:\/\/(?:127\.0\.0\.1|localhost)/i.test(showcaseUri)
+  ) {
+    testDbName = "heaven_bus_api_showcase";
+    client = new MongoClient(showcaseUri, { maxPoolSize: 100 });
+    await client.connect();
+    await client.db(testDbName).dropDatabase();
+  } else {
+    repl = await MongoMemoryReplSet.create({
+      replSet: { count: 1 },
+      binary: { version: "7.0.24" },
+    });
+    client = new MongoClient(repl.getUri(), { maxPoolSize: 100 });
+    await client.connect();
+  }
+
+  s = { client, db: client.db(testDbName), holdMs: 300000 };
   await initialize(s);
 }, process.env.CI ? 180000 : 900000);
 afterAll(async () => {
+  if (process.env.PW_SHOWCASE === "1" && testDbName === "heaven_bus_api_showcase") {
+    await client?.db(testDbName).dropDatabase().catch(() => undefined);
+  }
   await client?.close();
   await repl?.stop();
 });
