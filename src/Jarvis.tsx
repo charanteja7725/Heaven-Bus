@@ -34,7 +34,7 @@ export default function Jarvis({
   const [messages, setMessages] = useState<Message[]>([
       {
         role: "assistant",
-        text: "Hey, I’m Jarvis. A window seat, a weekend away, or the fastest way home? Tell me where you want to go.",
+        text: "Hey, I’m Jarvis. Ask me about buses, seats, payments, refunds, tickets, support numbers, family booking, email notifications, or live GPS tracking — or tell me where you want to go.",
       },
     ]),
     [input, setInput] = useState(""),
@@ -138,7 +138,7 @@ export default function Jarvis({
             setMessages([
               {
                 role: "assistant",
-                text: "A fresh start. Where are we heading?",
+                text: "A fresh start. Ask me about a route, booking, refund, payment, ticket, support number, or live journey.",
               },
             ]);
           }}
@@ -215,10 +215,11 @@ export default function Jarvis({
           <div className="jarvis-suggestions">
             {[
               "Bengaluru to Chennai tomorrow",
-              "A night bus to Goa from Bengaluru",
-              "How do seat holds work?",
-              "The bus is delayed — who should I call?",
-              "The toilet is not clean",
+              "What is my latest booking?",
+              "What is the refund policy?",
+              "Give me the customer care number",
+              "How does live GPS tracking work?",
+              "How does Family booking work?",
             ].map((s) => (
               <button onClick={() => send(s)} key={s}>
                 {s}
@@ -229,7 +230,7 @@ export default function Jarvis({
         )}
         {busy && (
           <p className="jarvis-thinking">
-            Jarvis is checking the routes<span>…</span>
+            Jarvis is checking HEAVEN-BUS<span>…</span>
           </p>
         )}
         <div ref={end} />
@@ -244,7 +245,7 @@ export default function Jarvis({
         <input
           ref={field}
           aria-label="Message Jarvis"
-          placeholder={listening ? "Listening…" : "Where do you want to go?"}
+          placeholder={listening ? "Listening…" : "Ask about trips, refunds, support, GPS…"}
           value={input}
           onChange={(e) => setInput(e.target.value)}
           maxLength={800}
@@ -269,8 +270,8 @@ export default function Jarvis({
         </button>
       </form>
       <p className="jarvis-disclaimer">
-        Searches HEAVEN-BUS inventory and routes support issues to the responsible
-        desk. You choose and confirm every booking.
+        Answers from HEAVEN-BUS rules and live inventory. Signed-in account questions
+        are limited to your own bookings and refunds. You choose and confirm every booking.
       </p>
     </aside>
   );
