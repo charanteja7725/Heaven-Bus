@@ -20,7 +20,7 @@
     "test:e2e:report": "playwright show-report",
     "test:e2e:headed": "playwright test --headed",
     "test:all": "npm test && npm run test:e2e",
-    "test:showcase": "tsx scripts/test-showcase.ts"
+    "test:showcase": "node scripts/test-showcase.mjs"
   },
   "dependencies": {
     "@vitejs/plugin-react": "^5.0.0",
