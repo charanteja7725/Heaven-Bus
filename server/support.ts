@@ -19,7 +19,7 @@ export const supportDirectory: SupportContact[] = [
   {
     id: "seat-quality",
     issue: "Broken, damaged, dirty or uncomfortable seats",
-    keywords: ["seat", "broken seat", "seat quality", "recliner", "armrest", "damaged seat"],
+    keywords: ["broken seat", "dirty seat", "uncomfortable seat", "seat quality", "recliner", "armrest", "damaged seat"],
     role: "Fleet Seat Quality Supervisor",
     phone: "1800-000-1002",
     priority: "normal",
@@ -152,8 +152,12 @@ export function findSupportContacts(message: string) {
     entry.keywords.some((keyword) => text.includes(keyword)),
   );
   if (matches.length) return matches.slice(0, 4);
-  if (/contact|number|phone|helpline|support|complaint|issue/.test(text))
-    return supportDirectory;
+  if (
+    /contact|mobile number|phone number|customer care|helpline|support number|help desk/.test(
+      text,
+    )
+  )
+    return supportDirectory.filter((entry) => entry.id === "general");
   return [];
 }
 
