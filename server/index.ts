@@ -41,6 +41,9 @@ if (
 const emailConfig = {
   apiKey: process.env.RESEND_API_KEY,
   from: process.env.JOURNEY_EMAIL_FROM,
+  gmailUser: process.env.GMAIL_USER,
+  gmailAppPassword: process.env.GMAIL_APP_PASSWORD,
+  gmailFromName: process.env.GMAIL_FROM_NAME,
   appUrl:
     process.env.PUBLIC_APP_URL?.trim() ||
     config.origins.find((origin) => origin.startsWith("https://")) ||
@@ -48,9 +51,11 @@ const emailConfig = {
     "http://localhost:5173",
 };
 console.log(
-  emailConfig.apiKey && emailConfig.from
-    ? "Email delivery provider ready"
-    : "Email delivery provider not configured",
+  emailConfig.gmailUser && emailConfig.gmailAppPassword
+    ? "Email delivery provider ready: Gmail SMTP"
+    : emailConfig.apiKey && emailConfig.from
+      ? "Email delivery provider ready: Resend"
+      : "Email delivery provider not configured",
 );
 const app = createApp(() => store, config),
   http = createServer(app);
