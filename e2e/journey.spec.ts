@@ -149,6 +149,21 @@ test("Jarvis returns inventory and follows up on a budget", async ({
   await page.getByRole("button", { name: "Send message", exact: true }).click();
   await expect(page.getByText("1800-000-1007")).toBeVisible();
   await expect(page.getByText("Toilet & Sanitation Supervisor")).toBeVisible();
+
+  await page.getByLabel("Message Jarvis").fill("What is the refund policy?");
+  await page.getByRole("button", { name: "Send message", exact: true }).click();
+  await expect(page.getByText(/100% refund/)).toBeVisible();
+
+  await page
+    .getByLabel("Message Jarvis")
+    .fill("Give me the customer care mobile number");
+  await page.getByRole("button", { name: "Send message", exact: true }).click();
+  await expect(page.getByText("1800-000-1099")).toBeVisible();
+  await expect(page.getByText("Passenger Help & Escalation Desk")).toBeVisible();
+
+  await page.getByLabel("Message Jarvis").fill("How does Family booking work?");
+  await page.getByRole("button", { name: "Send message", exact: true }).click();
+  await expect(page.getByText(/same reservation/)).toBeVisible();
 });
 test("admin sees operations and can publish a trip", async ({ page }) => {
   await page.goto("/login");
