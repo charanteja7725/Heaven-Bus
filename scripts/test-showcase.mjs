@@ -122,6 +122,8 @@ if (!process.env.CI) {
   );
 }
 
+if (!process.env.CI) process.env.PW_SHOWCASE = "1";
+
 const e2e = await run(
   "PLAYWRIGHT FUNCTIONAL BROWSER TESTS",
   playwrightCommand,
