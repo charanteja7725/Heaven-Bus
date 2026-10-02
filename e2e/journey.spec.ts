@@ -59,6 +59,90 @@ test("header sign-in opens auth, registration works, logout and login work", asy
   await expect(page.getByText(/Hi, Auth/)).toBeVisible();
 });
 
+test("invalid login is rejected with a clear message", async ({ page }) => {
+  await page.goto("/login");
+  await page.getByLabel("Email address").fill("missing-user@example.test");
+  await page.getByLabel("Password", { exact: true }).fill("Wrong-password-2026");
+  await page.getByRole("button", { name: "Sign in", exact: true }).click();
+  await expect(page.getByRole("alert")).toContainText(
+    "Email or password is incorrect",
+  );
+  await expect(page).toHaveURL(/\/login$/);
+});
+
+test("guest opening My journeys is asked to sign in", async ({ page }) => {
+  await page.goto("/bookings");
+  await expect(
+    page.getByRole("heading", { name: "Your journeys, all in one place." }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: /Sign in to continue/ }),
+  ).toBeVisible();
+});
+
+test("ordinary booking blocks mixed-gender adjacent seats", async ({ page }) => {
+  const response = await page.request.post("/api/auth/register", {
+    data: {
+      name: "Gender Rule Tester",
+      email: `gender-rule-${Date.now()}@example.test`,
+      password: "Gender-rule-password-2026",
+    },
+  });
+  expect(response.ok()).toBe(true);
+  const { token } = await response.json();
+  const tomorrow = new Date(Date.now() + 86400000).toLocaleDateString("en-CA", {
+    timeZone: "Asia/Kolkata",
+  });
+  await page.goto("/");
+  await page.evaluate((value) => sessionStorage.setItem("hb-token", value), token);
+  await page.goto(`/search?from=Bengaluru&to=Chennai&date=${tomorrow}`);
+  await page.getByRole("link", { name: "Choose seats" }).first().click();
+
+  await page.getByRole("button", { name: "Male", exact: true }).click();
+  await page
+    .getByRole("button", { name: "Seat 9A, available", exact: true })
+    .click();
+  await page.getByRole("button", { name: "Female", exact: true }).click();
+
+  const adjacent = page.getByRole("button", {
+    name: /Seat 9B, Seat 9B must match the gender selected for adjacent seat 9A/,
+  });
+  await expect(adjacent).toBeDisabled();
+});
+
+test("one reservation cannot select more than six seats", async ({ page }) => {
+  const response = await page.request.post("/api/auth/register", {
+    data: {
+      name: "Six Seat Tester",
+      email: `six-seat-${Date.now()}@example.test`,
+      password: "Six-seat-password-2026",
+    },
+  });
+  expect(response.ok()).toBe(true);
+  const { token } = await response.json();
+  const tomorrow = new Date(Date.now() + 86400000).toLocaleDateString("en-CA", {
+    timeZone: "Asia/Kolkata",
+  });
+  await page.goto("/");
+  await page.evaluate((value) => sessionStorage.setItem("hb-token", value), token);
+  await page.goto(`/search?from=Hyderabad&to=Bengaluru&date=${tomorrow}`);
+  await page.getByRole("link", { name: "Choose seats" }).first().click();
+  await page.getByRole("button", { name: "Male", exact: true }).click();
+
+  for (const seat of ["8A", "8B", "8C", "8D", "9A", "9B"]) {
+    await page
+      .getByRole("button", { name: `Seat ${seat}, available`, exact: true })
+      .click();
+  }
+  await expect(page.getByText("6 ×", { exact: false })).toBeVisible();
+  await page
+    .getByRole("button", { name: "Seat 9C, available", exact: true })
+    .click();
+  await expect(page.getByRole("status")).toContainText(
+    "You can reserve up to six seats.",
+  );
+});
+
 test("family booking allows mixed-gender passengers in one adjacent pair", async ({
   page,
 }) => {
