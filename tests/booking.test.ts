@@ -52,10 +52,6 @@ beforeAll(async () => {
     !/mongodb:\/\/(?:127\.0\.0\.1|localhost)/i.test(showcaseUri)
   ) {
     if (showcaseUri.startsWith("mongodb+srv://")) {
-      setServers(["8.8.8.8", "1.1.1.1"]);
-      console.log("Atlas SRV lookup using public DNS fallback.");
-    }
-    if (showcaseUri.startsWith("mongodb+srv://")) {
       const dnsServers = (
         process.env.SHOWCASE_DNS_SERVERS ?? "8.8.8.8,1.1.1.1"
       )
