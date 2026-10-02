@@ -23,12 +23,14 @@ try {
       "# Local-only HEAVEN-BUS interview showcase settings",
       "# This file is ignored by Git and must never be committed.",
       `SHOWCASE_MONGODB_URI=${uri}`,
+      "SHOWCASE_DNS_SERVERS=8.8.8.8,1.1.1.1",
       "",
     ].join("\n"),
     "utf8",
   );
 
   console.log("\n✓ Saved .env.showcase locally.");
+  console.log("✓ Atlas SRV DNS fallback configured: 8.8.8.8, 1.1.1.1");
   console.log("Next run: npm run test:showcase\n");
 } finally {
   rl.close();
