@@ -60,7 +60,8 @@ async function sendGmailSmtp(
 ) {
   const user = config.gmailUser?.trim();
   const password = config.gmailAppPassword?.replace(/\s+/g, "");
-  if (!user || !password) return null;
+  if (!user || !password)
+    throw new Error("Gmail SMTP credentials are missing");
 
   const socket = tls.connect({
     host: "smtp.gmail.com",
