@@ -161,7 +161,9 @@ test("Jarvis returns inventory and follows up on a budget", async ({
     .fill("Give me the customer care mobile number");
   await page.getByRole("button", { name: "Send message", exact: true }).click();
   await expect(page.getByText("1800-000-1099")).toBeVisible();
-  await expect(page.getByText("Passenger Help & Escalation Desk")).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: /Passenger Help & Escalation Desk/ }),
+  ).toBeVisible();
 
   await page.getByLabel("Message Jarvis").fill("How does Family booking work?");
   await page.getByRole("button", { name: "Send message", exact: true }).click();
