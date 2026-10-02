@@ -11,6 +11,7 @@ import {
 } from "vitest";
 import { MongoMemoryReplSet } from "mongodb-memory-server";
 import { MongoClient } from "mongodb";
+import { setServers } from "node:dns";
 import request from "supertest";
 import { initialize, col, type Store } from "../server/db";
 import {
@@ -50,6 +51,15 @@ beforeAll(async () => {
     showcaseUri &&
     !/mongodb:\/\/(?:127\.0\.0\.1|localhost)/i.test(showcaseUri)
   ) {
+    if (showcaseUri.startsWith("mongodb+srv://")) {
+      const dnsServers = (
+        process.env.SHOWCASE_DNS_SERVERS ?? "8.8.8.8,1.1.1.1"
+      )
+        .split(",")
+        .map((value) => value.trim())
+        .filter(Boolean);
+      setServers(dnsServers);
+    }
     testDbName = "heaven_bus_api_showcase";
     client = new MongoClient(showcaseUri, { maxPoolSize: 100 });
     await client.connect();
