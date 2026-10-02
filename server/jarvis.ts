@@ -139,8 +139,15 @@ async function searchTrips(
     if (/\bto\b/.test(text)) to = matches[0].city;
     else from = matches[0].city;
   } else if (matches.length === 1) {
-    if (!from) from = matches[0].city;
-    else if (!to && matches[0].city !== from) to = matches[0].city;
+    const city = matches[0].city;
+    if (!from && !to) {
+      if (/\bto\b/.test(text)) to = city;
+      else from = city;
+    } else if (!from && city !== to && fromWord >= 0) {
+      from = city;
+    } else if (!to && city !== from && toWord >= 0) {
+      to = city;
+    }
   }
 
   const current = await now(s);
@@ -321,6 +328,13 @@ export async function askJarvis(
       context,
     };
 
+  if (/family booking|family seat|family.*together/.test(text))
+    return {
+      reply:
+        "Turn on Family booking before selecting seats. It allows male and female family members inside the same reservation to sit together. It does not bypass seating restrictions next to an unrelated passenger, and Family mode cannot be changed after seats are already held unless you release them first.",
+      context,
+    };
+
   if (
     includesAny(text, [
       /how.*book/,
@@ -335,13 +349,6 @@ export async function askJarvis(
     return {
       reply:
         "Search a route, choose a bus, select the passenger gender, then select up to six seats. Your first selected seat starts the five-minute hold. Continue to checkout, enter passenger/contact details and the notification email, then complete payment. After verification, HEAVEN-BUS creates the confirmed ticket under My journeys.",
-      context,
-    };
-
-  if (/family booking|family seat|family.*together/.test(text))
-    return {
-      reply:
-        "Turn on Family booking before selecting seats. It allows male and female family members inside the same reservation to sit together. It does not bypass seating restrictions next to an unrelated passenger, and Family mode cannot be changed after seats are already held unless you release them first.",
       context,
     };
 
