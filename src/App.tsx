@@ -318,12 +318,20 @@ function Protected({ children }: { children: ReactNode }) {
 }
 function AuthPage() {
   const { login, user } = useApp(),
-    nav = useNavigate();
+    nav = useNavigate(),
+    location = useLocation();
+  useEffect(() => {
+    if (window.location.hostname === "heaven-bus.vercel.app") {
+      window.location.replace(
+        `https://heaven-bus-web.onrender.com${location.pathname}${location.search}`,
+      );
+    }
+  }, [location.pathname, location.search]);
   const [register, setRegister] = useState(false),
     [error, setError] = useState(""),
     [busy, setBusy] = useState(false);
   const next =
-    new URLSearchParams(useLocation().search).get("next") ?? "/bookings";
+    new URLSearchParams(location.search).get("next") ?? "/bookings";
   const safeNext =
     next.startsWith("/") && !next.startsWith("//") ? next : "/bookings";
   return (
@@ -375,6 +383,7 @@ function AuthPage() {
                   {
                     method: "POST",
                     body: JSON.stringify(Object.fromEntries(data)),
+                    signal: AbortSignal.timeout(12000),
                   },
                 );
                 login(r.user, r.token);
