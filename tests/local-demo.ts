@@ -49,6 +49,8 @@ const child = spawn("node", ["--import", "tsx", "server/index.ts"], {
     ...process.env,
     MONGODB_URI: uri,
     MONGODB_DB: dbName,
+    MONGODB_DNS_SERVERS:
+      process.env.SHOWCASE_DNS_SERVERS ?? "8.8.8.8,1.1.1.1",
     JWT_SECRET: "local-only-test-secret-at-least-32-characters",
     SEED_DEMO: "true",
     PAYMENT_MODE: "sandbox",
