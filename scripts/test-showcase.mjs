@@ -13,12 +13,38 @@ function section(title) {
   console.log("=".repeat(72));
 }
 
-function run(label, command) {
+function createLineWriter(prefix, sink, capture) {
+  let buffer = "";
+  return {
+    write(chunk) {
+      buffer += chunk.toString();
+      const lines = buffer.split(/\r?\n/);
+      buffer = lines.pop() ?? "";
+      for (const line of lines) {
+        const rendered = prefix ? `${prefix} ${line}\n` : `${line}\n`;
+        capture(rendered);
+        sink.write(rendered);
+      }
+    },
+    flush() {
+      if (!buffer) return;
+      const rendered = prefix ? `${prefix} ${buffer}\n` : `${buffer}\n`;
+      capture(rendered);
+      sink.write(rendered);
+      buffer = "";
+    },
+  };
+}
+
+function run(label, command, prefix = "") {
   section(label);
   console.log(cyan(`$ ${command}\n`));
 
   return new Promise((resolve) => {
     let output = "";
+    const capture = (text) => {
+      output += text;
+    };
     const child = spawn(command, {
       cwd: process.cwd(),
       env: { ...process.env, FORCE_COLOR: "0" },
@@ -26,26 +52,21 @@ function run(label, command) {
       windowsHide: false,
     });
 
-    child.stdout.on("data", (chunk) => {
-      const text = chunk.toString();
-      output += text;
-      process.stdout.write(text);
-    });
+    const out = createLineWriter(prefix, process.stdout, capture);
+    const err = createLineWriter(prefix, process.stderr, capture);
 
-    child.stderr.on("data", (chunk) => {
-      const text = chunk.toString();
-      output += text;
-      process.stderr.write(text);
-    });
+    child.stdout.on("data", (chunk) => out.write(chunk));
+    child.stderr.on("data", (chunk) => err.write(chunk));
 
     child.on("error", (error) => {
-      const text = `\nLauncher error: ${error.message}\n`;
-      output += text;
-      process.stderr.write(red(text));
-      resolve({ ok: false, output, code: -1 });
+      const msg = `Launcher error: ${error.message}`;
+      capture(msg + "\n");
+      process.stderr.write(red((prefix ? prefix + " " : "") + msg + "\n"));
     });
 
     child.on("close", (code) => {
+      out.flush();
+      err.flush();
       resolve({ ok: code === 0, output, code: code ?? -1 });
     });
   });
@@ -76,7 +97,7 @@ console.log("Browser: Chromium");
 console.log(
   process.env.CI
     ? "Mode: CI/headless isolated test environment"
-    : "Mode: local interview showcase — visible Chromium + live terminal output",
+    : "Mode: local interview showcase — API tests + visible browser together",
 );
 
 section(`API ENDPOINT INVENTORY — ${routes.length} REGISTERED ROUTES`);
@@ -90,44 +111,51 @@ console.log(
   ),
 );
 
-const api = await run(
-  "BACKEND / API / BUSINESS-RULE TESTS",
-  "npx vitest run tests/booking.test.ts --reporter=verbose",
-);
-
-if (!api.ok) {
-  section("FINAL RESULT");
-  console.log(red(`✗ Backend/API verification failed (exit code ${api.code}).`));
-  console.log(
-    yellow(
-      "Playwright was not started because the backend/API suite must pass first.",
-    ),
-  );
-  console.log(
-    "If this is a fresh Windows checkout, run: npm install --include=dev",
-  );
-  process.exit(1);
-}
-
+const apiCommand =
+  "npx vitest run tests/booking.test.ts --reporter=verbose";
 const playwrightCommand = process.env.CI
   ? "npx playwright test --reporter=list"
   : "npx playwright test --headed --reporter=list";
 
-if (!process.env.CI) {
-  section("VISIBLE BROWSER DEMO");
+let api;
+let e2e;
+
+if (process.env.CI) {
+  api = await run("BACKEND / API / BUSINESS-RULE TESTS", apiCommand);
+  e2e = api.ok
+    ? await run("PLAYWRIGHT FUNCTIONAL BROWSER TESTS", playwrightCommand)
+    : { ok: false, output: "", code: -1 };
+} else {
+  section("FIRST-RUN TEST ENVIRONMENT CHECK");
   console.log(
     yellow(
-      "Chromium will now open. Keep both the browser and terminal visible — Playwright will operate the app automatically.",
+      "Ensuring the isolated MongoDB test runtime is available. On the first run this may download about 600 MB; later runs reuse the cache.",
     ),
   );
+  const prepared = await run(
+    "MONGODB TEST RUNTIME",
+    "node scripts/prepare-test-mongodb.mjs",
+  );
+
+  if (!prepared.ok) {
+    section("FINAL QA RESULT");
+    console.log(red("✗ Could not prepare the local MongoDB test runtime."));
+    process.exit(1);
+  }
+
+  process.env.PW_SHOWCASE = "1";
+  section("VISIBLE BROWSER + TERMINAL TESTING");
+  console.log(
+    yellow(
+      "Chromium will open now while backend/API tests run in this terminal. Keep both visible.",
+    ),
+  );
+
+  [api, e2e] = await Promise.all([
+    run("BACKEND / API / BUSINESS-RULE TESTS", apiCommand, "[API]"),
+    run("PLAYWRIGHT FUNCTIONAL BROWSER TESTS", playwrightCommand, "[E2E]"),
+  ]);
 }
-
-if (!process.env.CI) process.env.PW_SHOWCASE = "1";
-
-const e2e = await run(
-  "PLAYWRIGHT FUNCTIONAL BROWSER TESTS",
-  playwrightCommand,
-);
 
 const apiPassed = extractPassed(api.output);
 const e2ePassed = extractPassed(e2e.output);
@@ -142,13 +170,22 @@ console.log(
 console.log(`${green("✓")} API endpoints displayed: ${routes.length}`);
 
 if (apiPassed !== null && e2ePassed !== null) {
-  const total = apiPassed + e2ePassed;
-  console.log(bold(`Total automated test cases passed: ${total} / ${total}`));
+  const totalPassed = apiPassed + e2ePassed;
+  const expected = 51;
+  console.log(
+    bold(
+      `Total automated test cases passed: ${totalPassed} / ${expected}`,
+    ),
+  );
 }
 
-if (!e2e.ok) {
-  console.log(red("\nOne or more Playwright tests failed. Check the output above."));
-  console.log("Open the HTML report with: npm run test:e2e:report");
+if (!api.ok || !e2e.ok) {
+  console.log(
+    red(
+      "\nHEAVEN-BUS QA verification FAILED because at least one automated suite failed.",
+    ),
+  );
+  console.log("Open the Playwright HTML report with: npm run test:e2e:report");
   process.exit(1);
 }
 
