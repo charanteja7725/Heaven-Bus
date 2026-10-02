@@ -1,8 +1,12 @@
+import tls from "node:tls";
 import { col, now, type Store } from "./db.js";
 
 export type JourneyEmailConfig = {
   apiKey?: string;
   from?: string;
+  gmailUser?: string;
+  gmailAppPassword?: string;
+  gmailFromName?: string;
   appUrl: string;
 };
 
@@ -37,6 +41,136 @@ function formatDeparture(value: unknown) {
   });
 }
 
+function encodeHeader(value: string) {
+  return `=?UTF-8?B?${Buffer.from(value, "utf8").toString("base64")}?=`;
+}
+
+function wrapBase64(value: string) {
+  return Buffer.from(value, "utf8")
+    .toString("base64")
+    .match(/.{1,76}/g)
+    ?.join("\r\n") ?? "";
+}
+
+async function sendGmailSmtp(
+  config: JourneyEmailConfig,
+  to: string,
+  subject: string,
+  html: string,
+) {
+  const user = config.gmailUser?.trim();
+  const password = config.gmailAppPassword?.replace(/\s+/g, "");
+  if (!user || !password) return null;
+
+  const socket = tls.connect({
+    host: "smtp.gmail.com",
+    port: 465,
+    servername: "smtp.gmail.com",
+    rejectUnauthorized: true,
+  });
+  socket.setEncoding("utf8");
+  socket.setTimeout(15000);
+
+  let buffer = "";
+  const queued: string[] = [];
+  const waiting: Array<{
+    resolve: (line: string) => void;
+    reject: (error: Error) => void;
+  }> = [];
+
+  const failWaiters = (error: Error) => {
+    while (waiting.length) waiting.shift()!.reject(error);
+  };
+  socket.on("data", (chunk) => {
+    buffer += String(chunk);
+    while (buffer.includes("\r\n")) {
+      const index = buffer.indexOf("\r\n");
+      const line = buffer.slice(0, index);
+      buffer = buffer.slice(index + 2);
+      const waiter = waiting.shift();
+      if (waiter) waiter.resolve(line);
+      else queued.push(line);
+    }
+  });
+  socket.on("error", failWaiters);
+  socket.on("timeout", () => {
+    const error = new Error("Gmail SMTP timed out");
+    failWaiters(error);
+    socket.destroy(error);
+  });
+
+  const nextLine = () =>
+    queued.length
+      ? Promise.resolve(queued.shift()!)
+      : new Promise<string>((resolve, reject) => waiting.push({ resolve, reject }));
+
+  const expect = async (code: number) => {
+    const prefix = String(code);
+    let line = await nextLine();
+    if (!line.startsWith(prefix))
+      throw new Error(`Gmail SMTP error: ${line.slice(0, 180)}`);
+    while (line.startsWith(`${prefix}-`)) {
+      line = await nextLine();
+      if (!line.startsWith(prefix))
+        throw new Error(`Gmail SMTP error: ${line.slice(0, 180)}`);
+    }
+    return line;
+  };
+
+  const command = async (value: string, code: number) => {
+    socket.write(`${value}\r\n`);
+    return expect(code);
+  };
+
+  try {
+    await new Promise<void>((resolve, reject) => {
+      if (socket.encrypted) resolve();
+      else {
+        socket.once("secureConnect", () => resolve());
+        socket.once("error", reject);
+      }
+    });
+    await expect(220);
+    await command("EHLO heaven-bus", 250);
+    await command("AUTH LOGIN", 334);
+    await command(Buffer.from(user).toString("base64"), 334);
+    await command(Buffer.from(password).toString("base64"), 235);
+    await command(`MAIL FROM:<${user}>`, 250);
+    const rcpt = await command(`RCPT TO:<${to}>`, 250).catch(async (error) => {
+      if (String(error).includes("251")) return "";
+      throw error;
+    });
+    void rcpt;
+    await command("DATA", 354);
+
+    const fromName = config.gmailFromName?.trim() || "HEAVEN-BUS";
+    const message = [
+      `From: ${encodeHeader(fromName)} <${user}>`,
+      `To: <${to}>`,
+      `Subject: ${encodeHeader(subject)}`,
+      "MIME-Version: 1.0",
+      "Content-Type: text/html; charset=UTF-8",
+      "Content-Transfer-Encoding: base64",
+      "X-Mailer: HEAVEN-BUS",
+      "",
+      wrapBase64(html),
+    ].join("\r\n");
+
+    socket.write(`${message}\r\n.\r\n`);
+    const accepted = await expect(250);
+    await command("QUIT", 221).catch(() => "");
+    socket.end();
+    return {
+      sent: true as const,
+      providerId: accepted.slice(4).trim() || "gmail-smtp",
+      provider: "gmail" as const,
+    };
+  } catch (error) {
+    socket.destroy();
+    throw error;
+  }
+}
+
 async function sendResend(
   config: JourneyEmailConfig,
   to: string,
@@ -67,7 +201,23 @@ async function sendResend(
         ? body.message
         : `Email provider returned ${response.status}`,
     );
-  return { sent: true, providerId: body?.id ?? null };
+  return {
+    sent: true as const,
+    providerId: body?.id ?? null,
+    provider: "resend" as const,
+  };
+}
+
+async function sendEmail(
+  config: JourneyEmailConfig,
+  to: string,
+  subject: string,
+  html: string,
+) {
+  if (config.gmailUser && config.gmailAppPassword)
+    return sendGmailSmtp(config, to, subject, html);
+
+  return sendResend(config, to, subject, html);
 }
 
 export async function processBookingConfirmationEmails(
@@ -169,7 +319,7 @@ export async function processBookingConfirmationEmails(
     );
 
     try {
-      const result = await sendResend(config, email, subject, html);
+      const result = await sendEmail(config, email, subject, html);
       if (!result.sent) {
         await Promise.all([
           col(s, "emailNotifications").updateOne(
@@ -178,7 +328,7 @@ export async function processBookingConfirmationEmails(
               $set: {
                 status: result.reason,
                 lastError:
-                  "Configure RESEND_API_KEY and JOURNEY_EMAIL_FROM on Render to send confirmation email.",
+                  "Configure Gmail SMTP (GMAIL_USER + GMAIL_APP_PASSWORD) or Resend on Render to send confirmation email.",
               },
             },
           ),
@@ -219,6 +369,7 @@ export async function processBookingConfirmationEmails(
       sent++;
       console.log("Booking confirmation email sent", {
         bookingId: booking._id,
+        provider: result.provider,
       });
     } catch (error) {
       const message =
@@ -328,7 +479,7 @@ export async function processJourneyDayEmails(
     );
 
     try {
-      const result = await sendResend(config, email, subject, html);
+      const result = await sendEmail(config, email, subject, html);
       if (!result.sent) {
         await Promise.all([
           col(s, "emailNotifications").updateOne(
@@ -337,7 +488,7 @@ export async function processJourneyDayEmails(
               $set: {
                 status: result.reason,
                 lastError:
-                  "Configure RESEND_API_KEY and JOURNEY_EMAIL_FROM on Render to send journey-day email.",
+                  "Configure Gmail SMTP (GMAIL_USER + GMAIL_APP_PASSWORD) or Resend on Render to send journey-day email.",
               },
             },
           ),
