@@ -928,6 +928,97 @@ describe("API and assistant", () => {
     );
     expect(followup.trips).toHaveLength(1);
   });
+  it("answers HEAVEN-BUS app FAQs and returns the right support numbers", async () => {
+    const refund = await askJarvis(s, "What is the refund policy?");
+    expect(refund.reply).toContain("100% refund");
+    expect(refund.reply).toContain("6 to 24 hours");
+    expect(refund.supportContacts?.[0].id).toBe("refunds");
+
+    const family = await askJarvis(s, "How does family booking work?");
+    expect(family.reply).toContain("Family booking");
+    expect(family.reply).toContain("same reservation");
+
+    const gps = await askJarvis(s, "How does live GPS tracking work?");
+    expect(gps.reply).toContain("Use my current location");
+    expect(gps.reply).toContain("passenger GPS");
+
+    const email = await askJarvis(s, "Will I get a confirmation mail?");
+    expect(email.reply).toContain("confirmation email");
+    expect(email.reply).toContain("notification");
+
+    const contact = await askJarvis(s, "Give me the customer care mobile number");
+    expect(contact.supportContacts).toHaveLength(1);
+    expect(contact.supportContacts?.[0].id).toBe("general");
+    expect(contact.supportContacts?.[0].phone).toBe("1800-000-1099");
+
+    const delayed = await askJarvis(s, "My bus is delayed, who should I call?");
+    expect(delayed.supportContacts?.some((entry) => entry.id === "delay")).toBe(
+      true,
+    );
+  });
+
+  it("lets Jarvis read only the signed-in passenger's booking and refund status", async () => {
+    const app = createApp(() => s, cfg);
+    const first = await request(app).post("/api/auth/register").send({
+      name: "Jarvis Passenger",
+      email: "jarvis-passenger@example.test",
+      password: "test-password-123",
+    });
+    const second = await request(app).post("/api/auth/register").send({
+      name: "Other Passenger",
+      email: "jarvis-other@example.test",
+      password: "test-password-123",
+    });
+
+    await col(s, "bookings").insertOne({
+      _id: "jarvis-booking",
+      holdId: "jarvis-hold",
+      userId: first.body.user._id,
+      reference: "HB-JARVIS-123",
+      status: "CONFIRMED",
+      seatIds: ["1A"],
+      trip: {
+        _id: tripId,
+        name: "Heaven Express",
+        from: "Bengaluru",
+        to: "Chennai",
+      },
+      createdAt: new Date(),
+    });
+    await col(s, "refunds").insertOne({
+      _id: "jarvis-refund",
+      holdId: "jarvis-hold",
+      userId: first.body.user._id,
+      amount: 69900,
+      status: "PENDING_APPROVAL",
+      createdAt: new Date(),
+    });
+
+    const booking = await request(app)
+      .post("/api/jarvis")
+      .set("Authorization", `Bearer ${first.body.token}`)
+      .send({ message: "What is my latest booking?" });
+    expect(booking.status).toBe(200);
+    expect(booking.body.reply).toContain("HB-JARVIS-123");
+    expect(booking.body.reply).toContain("Bengaluru");
+
+    const refund = await request(app)
+      .post("/api/jarvis")
+      .set("Authorization", `Bearer ${first.body.token}`)
+      .send({ message: "What is my refund status?" });
+    expect(refund.status).toBe(200);
+    expect(refund.body.reply).toContain("Pending Approval");
+    expect(refund.body.reply).toContain("₹699");
+
+    const privateResult = await request(app)
+      .post("/api/jarvis")
+      .set("Authorization", `Bearer ${second.body.token}`)
+      .send({ message: "What is my latest booking?" });
+    expect(privateResult.status).toBe(200);
+    expect(privateResult.body.reply).not.toContain("HB-JARVIS-123");
+    expect(privateResult.body.reply).toContain("do not have");
+  });
+
   it("recovers the public checkout key after refresh without exposing provider secrets", async () => {
     const app = createApp(() => s, {
       ...cfg,
