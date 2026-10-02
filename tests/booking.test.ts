@@ -238,9 +238,9 @@ describe("database-enforced booking safety", () => {
       s,
       "confirm-email-user",
       tripId,
-      ["2A"],
+      ["1A"],
       "confirm-email-key",
-      { "2A": "MALE" },
+      { "1A": "MALE" },
     );
     await startPayment(
       s,
