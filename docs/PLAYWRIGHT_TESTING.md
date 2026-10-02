@@ -25,6 +25,16 @@ The main end-to-end journey covers:
 
 Additional functional and edge-case tests cover authentication, invalid credentials, protected pages, route autocomplete, family seating, gender restrictions, six-seat limits, live seat contention, Jarvis, admin trip creation, mobile layout and GPS.
 
+## One-command interviewer showcase
+
+Run this from the project terminal:
+
+```bash
+npm run test:showcase
+```
+
+It prints the complete API endpoint inventory, runs the verbose backend/API test suite, runs the Playwright browser suite, and finishes with pass/fail totals. This is the recommended command to demonstrate the project's testing strategy to an interviewer.
+
 ## Commands
 
 Install dependencies:
