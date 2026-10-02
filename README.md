@@ -6,7 +6,7 @@ A bus booking application for PS-07, Bus Seat Vanishing Act. React + TypeScript 
 
 - Passenger route search, live seat map, fixed five-minute holds, up to six seats, family mixed-gender seating, passenger details, checkout, history, printable tickets, confirmed-ticket cancellation with time-based refunds, and passenger-powered live journey tracking from origin to destination. Confirmed travellers can explicitly opt in to share phone GPS during the journey; fresh reports are aggregated into one bus position and individual raw locations are never returned to other passengers.
 - Admin operations dashboard: bookings, active holds, searchable scheduled trips, create departure, refunds and payment exceptions. Live journey location is passenger-powered rather than driver/admin-controlled.
-- Ask Jarvis: conversational route search with follow-up context, dates, budget and evening filters, hold/refund guidance, optional browser voice input, and issue-specific responsible support contacts for refunds, seat quality, rash driving, delays, cleaning, electricity/charging, toilets, safety, harassment, medical emergencies, luggage, boarding, AC, accessibility, tracking and staff conduct. Uses a deterministic parser and database queries, not an external LLM; it never invents trip inventory or books without confirmation.
+- Ask Jarvis: conversational route search with follow-up context, dates, budget and evening filters, hold/refund guidance, optional browser voice input, and issue-specific support contacts. Critical booking facts remain deterministic and database-backed. For local development, Jarvis can also use a laptop-hosted Ollama model for free-form HEAVEN-BUS questions; Ollama never owns seat, payment, refund or inventory decisions.
 - Journey-day email reminders: checkout collects a notification email, confirmed bookings retain it, and a background worker sends the passenger a same-day reminder and live-tracking link when a Resend sender is configured.
 - Clearly labelled sandbox payment mode, plus Razorpay checkout, server verification, signed webhook inbox, recovery and compensating refunds.
 
@@ -34,6 +34,27 @@ Register an account, then promote the intended administrator:
 npm run admin -- your@email.com
 ```
 
+## Local Ollama for Ask Jarvis
+
+Ollama is optional and intended for the local HEAVEN-BUS demo. The server calls Ollama on `http://127.0.0.1:11434` by default. Live inventory, booking state, payments, refunds, support numbers and account-specific status continue to use deterministic server/database logic.
+
+```bash
+# Ollama desktop app should already be installed and running.
+ollama list
+
+# If no model is installed, a lightweight option is:
+ollama pull llama3.2:1b
+
+# Detect an installed model, verify Ollama, and create ignored .env.ollama:
+npm run ollama:setup
+
+# Start HEAVEN-BUS:
+npm run dev:api
+npm run dev
+```
+
+When a free-form Jarvis reply comes from the local model, the chat displays **Local AI · Ollama**. If Ollama is stopped or times out, Jarvis falls back to its deterministic HEAVEN-BUS help instead of failing the booking app.
+
 ## Environment
 
 | Variable                | Where         | Purpose                                               |
@@ -51,6 +72,10 @@ npm run admin -- your@email.com
 | RESEND_API_KEY           | Render secret | Resend API key for journey-day reminder email         |
 | JOURNEY_EMAIL_FROM       | Render        | Verified sender, e.g. HEAVEN-BUS <journeys@domain>    |
 | PUBLIC_APP_URL           | Render        | Public Vercel origin used in email tracking links     |
+| OLLAMA_ENABLED           | Local         | true enables local Ollama free-form Jarvis answers    |
+| OLLAMA_URL               | Local         | Ollama API origin, default http://127.0.0.1:11434     |
+| OLLAMA_MODEL             | Local         | Installed Ollama model used by Jarvis                  |
+| OLLAMA_TIMEOUT_MS        | Local         | Local model request timeout, default 20000 ms          |
 
 ## Deploy
 
