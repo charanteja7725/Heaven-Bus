@@ -36,7 +36,8 @@ import {
   processBookingConfirmationEmails,
   processJourneyDayEmails,
 } from "../server/notifications";
-let repl: MongoMemoryReplSet | undefined, client: MongoClient, s: Store;\nlet testDbName = "test";
+let repl: MongoMemoryReplSet | undefined, client: MongoClient, s: Store;
+let testDbName = "test";
 const tripId = "test-trip";
 afterEach(() => vi.unstubAllGlobals());
 beforeAll(async () => {
