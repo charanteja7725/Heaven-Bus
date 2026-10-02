@@ -1,6 +1,7 @@
 import * as chrono from "chrono-node";
 import { cities } from "./seed.js";
 import { col, now, type Store } from "./db.js";
+import { askOllama } from "./ollama.js";
 import {
   findSupportContacts,
   supportDisclaimer,
@@ -13,6 +14,8 @@ export type JarvisResponse = {
   trips?: any[];
   supportContacts?: SupportContact[];
   supportDisclaimer?: string;
+  provider?: "rules" | "ollama";
+  model?: string;
 };
 
 const aliases: Record<string, string> = {
@@ -442,9 +445,19 @@ export async function askJarvis(
       context,
     };
 
+  const ai = await askOllama(message, context);
+  if (ai)
+    return {
+      reply: ai.reply,
+      context,
+      provider: "ollama",
+      model: ai.model,
+    };
+
   return {
     reply:
       "I can help with HEAVEN-BUS questions about trips/routes, seat booking, five-minute holds, payments, tickets, cancellations, refunds, support/mobile numbers, family and gender seating, email notifications, live GPS tracking, accounts, and your own booking/refund status when signed in. Ask me one of those topics and I’ll answer from the app’s actual rules.",
     context,
+    provider: "rules",
   };
 }
