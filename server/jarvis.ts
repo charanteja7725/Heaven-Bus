@@ -3,9 +3,17 @@ import { cities } from "./seed.js";
 import { col, now, type Store } from "./db.js";
 import {
   findSupportContacts,
-  supportDirectory,
   supportDisclaimer,
+  type SupportContact,
 } from "./support.js";
+
+export type JarvisResponse = {
+  reply: string;
+  context: any;
+  trips?: any[];
+  supportContacts?: SupportContact[];
+  supportDisclaimer?: string;
+};
 
 const aliases: Record<string, string> = {
   bangalore: "Bengaluru",
@@ -106,7 +114,7 @@ async function searchTrips(
   message: string,
   context: any,
   locations: string[],
-) {
+): Promise<JarvisResponse> {
   const text = message.toLowerCase();
   const matches = detectedLocations(message, locations);
   let from = context.from,
@@ -236,7 +244,7 @@ export async function askJarvis(
   message: string,
   context: any = {},
   userId?: string,
-) {
+): Promise<JarvisResponse> {
   const text = message.toLowerCase().trim();
   const locations = await knownLocations(s);
   const matches = detectedLocations(message, locations);
