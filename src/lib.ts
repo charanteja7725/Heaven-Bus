@@ -6,15 +6,29 @@ export function getToken() {
   return sessionStorage.getItem("hb-token");
 }
 export async function api(path: string, options: RequestInit = {}) {
-  const response = await fetch(`${API}/api${path}`, {
-    ...options,
-    headers: {
-      "Content-Type": "application/json",
-      ...(getToken() ? { Authorization: `Bearer ${getToken()}` } : {}),
-      ...options.headers,
-    },
-    signal: options.signal ?? AbortSignal.timeout(25000),
-  });
+  let response: Response;
+  try {
+    response = await fetch(`${API}/api${path}`, {
+      ...options,
+      headers: {
+        "Content-Type": "application/json",
+        ...(getToken() ? { Authorization: `Bearer ${getToken()}` } : {}),
+        ...options.headers,
+      },
+      signal: options.signal ?? AbortSignal.timeout(25000),
+    });
+  } catch (error) {
+    if (
+      error instanceof DOMException &&
+      (error.name === "TimeoutError" || error.name === "AbortError")
+    )
+      throw new Error(
+        "The booking server took too long to respond. Please try again.",
+      );
+    throw new Error(
+      "Could not reach the HEAVEN-BUS booking server. Please check your connection and try again.",
+    );
+  }
   const body = await response
     .json()
     .catch(() => ({
