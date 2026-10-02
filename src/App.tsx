@@ -63,6 +63,12 @@ export default function App() {
   const nav = useNavigate(),
     location = useLocation();
   useEffect(() => {
+    if (window.location.hostname === "heaven-bus.vercel.app") {
+      window.location.replace(
+        `https://heaven-bus-web.onrender.com${window.location.pathname}${window.location.search}${window.location.hash}`,
+      );
+      return;
+    }
     if (sessionStorage.getItem("hb-token"))
       api("/auth/me")
         .then(setUser)
@@ -320,13 +326,6 @@ function AuthPage() {
   const { login, user } = useApp(),
     nav = useNavigate(),
     location = useLocation();
-  useEffect(() => {
-    if (window.location.hostname === "heaven-bus.vercel.app") {
-      window.location.replace(
-        `https://heaven-bus-web.onrender.com${location.pathname}${location.search}`,
-      );
-    }
-  }, [location.pathname, location.search]);
   const [register, setRegister] = useState(false),
     [error, setError] = useState(""),
     [busy, setBusy] = useState(false);
