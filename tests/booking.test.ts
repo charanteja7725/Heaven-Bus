@@ -657,6 +657,247 @@ describe("database-enforced booking safety", () => {
     );
   });
 });
+describe("complete API contract smoke test", () => {
+  const cfg = {
+    secret: "test-only-secret-with-more-than-32-characters",
+    origins: ["http://localhost:5173"],
+    payment: { mode: "sandbox" },
+  };
+
+  it("keeps public, auth, booking, tracking and admin endpoints operational", async () => {
+    const app = createApp(() => s, cfg);
+
+    expect((await request(app).get("/api/health/live")).status).toBe(200);
+    expect((await request(app).get("/api/health/ready")).status).toBe(200);
+
+    const config = await request(app).get("/api/config");
+    expect(config.status).toBe(200);
+    expect(config.body.paymentMode).toBe("sandbox");
+    expect(config.body.holdSeconds).toBe(300);
+
+    const support = await request(app).get("/api/support");
+    expect(support.status).toBe(200);
+    expect(Array.isArray(support.body.contacts)).toBe(true);
+
+    const locations = await request(app).get("/api/locations");
+    expect(locations.status).toBe(200);
+    expect(locations.body.locations).toContain("Bengaluru");
+    expect(locations.body.locations).toContain("Chennai");
+
+    const trips = await request(app)
+      .get("/api/trips")
+      .query({ from: "Bengaluru", to: "Chennai" });
+    expect(trips.status).toBe(200);
+    expect(trips.body.some((trip: any) => trip._id === tripId)).toBe(true);
+
+    const trip = await request(app).get(`/api/trips/${tripId}`);
+    expect(trip.status).toBe(200);
+    expect(trip.body._id).toBe(tripId);
+
+    const seatsBefore = await request(app).get(`/api/trips/${tripId}/seats`);
+    expect(seatsBefore.status).toBe(200);
+    expect(seatsBefore.body.seats).toHaveLength(4);
+
+    const signup = await request(app).post("/api/auth/register").send({
+      name: "API Smoke Passenger",
+      email: "api-smoke@example.test",
+      password: "test-password-123",
+    });
+    expect(signup.status).toBe(200);
+    expect(signup.body.token).toBeTruthy();
+
+    const duplicate = await request(app).post("/api/auth/register").send({
+      name: "Duplicate",
+      email: "api-smoke@example.test",
+      password: "test-password-123",
+    });
+    expect(duplicate.status).toBe(409);
+
+    const badLogin = await request(app).post("/api/auth/login").send({
+      email: "api-smoke@example.test",
+      password: "wrong-password-123",
+    });
+    expect(badLogin.status).toBe(401);
+
+    const login = await request(app).post("/api/auth/login").send({
+      email: "api-smoke@example.test",
+      password: "test-password-123",
+    });
+    expect(login.status).toBe(200);
+    const token = login.body.token as string;
+    const authHeader = { Authorization: `Bearer ${token}` };
+
+    const me = await request(app).get("/api/auth/me").set(authHeader);
+    expect(me.status).toBe(200);
+    expect(me.body.email).toBe("api-smoke@example.test");
+    expect(me.body.password).toBeUndefined();
+
+    const noHold = await request(app).get("/api/holds/current").set(authHeader);
+    expect(noHold.status).toBe(200);
+    expect(noHold.body).toBeNull();
+
+    const hold = await request(app)
+      .post("/api/holds")
+      .set(authHeader)
+      .set("Idempotency-Key", "api-smoke-hold-0001")
+      .send({
+        tripId,
+        seatIds: ["1A"],
+        seatGenders: { "1A": "MALE" },
+        familyBooking: false,
+      });
+    expect(hold.status).toBe(200);
+    expect(hold.body.hold.seatIds).toEqual(["1A"]);
+    const holdId = hold.body.hold._id as string;
+
+    const currentHold = await request(app)
+      .get("/api/holds/current")
+      .set(authHeader);
+    expect(currentHold.status).toBe(200);
+    expect(currentHold.body._id).toBe(holdId);
+
+    const holdDetail = await request(app)
+      .get(`/api/holds/${holdId}`)
+      .set(authHeader);
+    expect(holdDetail.status).toBe(200);
+    expect(holdDetail.body._id).toBe(holdId);
+
+    const payment = await request(app)
+      .post(`/api/holds/${holdId}/payment`)
+      .set(authHeader)
+      .send({
+        passengers: [
+          { name: "API Smoke Passenger", age: 24, gender: "MALE" },
+        ],
+        contact: "9876543210",
+        notificationEmail: "api-smoke@example.test",
+      });
+    expect(payment.status).toBe(200);
+    expect(payment.body.mode).toBe("sandbox");
+
+    const paid = await request(app)
+      .post(`/api/holds/${holdId}/sandbox-pay`)
+      .set(authHeader);
+    expect(paid.status).toBe(200);
+    expect(paid.body.status).toBe("CONFIRMED");
+
+    const bookings = await request(app).get("/api/bookings").set(authHeader);
+    expect(bookings.status).toBe(200);
+    expect(bookings.body.bookings).toHaveLength(1);
+    expect(bookings.body.bookings[0]._id).toBe(holdId);
+
+    const booking = await request(app)
+      .get(`/api/bookings/${holdId}`)
+      .set(authHeader);
+    expect(booking.status).toBe(200);
+    expect(booking.body.status).toBe("CONFIRMED");
+
+    const tracking = await request(app)
+      .get(`/api/bookings/${holdId}/tracking`)
+      .set(authHeader);
+    expect(tracking.status).toBe(200);
+    expect(tracking.body.booking._id).toBe(holdId);
+
+    const locationOutsideWindow = await request(app)
+      .post(`/api/bookings/${holdId}/location`)
+      .set(authHeader)
+      .send({
+        lat: 12.9716,
+        lng: 77.5946,
+        accuracy: 10,
+        speedKph: 30,
+      });
+    expect([200, 409]).toContain(locationOutsideWindow.status);
+
+    const stopLocation = await request(app)
+      .delete(`/api/bookings/${holdId}/location`)
+      .set(authHeader);
+    expect(stopLocation.status).toBe(200);
+
+    const jarvis = await request(app)
+      .post("/api/jarvis")
+      .set(authHeader)
+      .send({ message: "What is my latest booking?" });
+    expect(jarvis.status).toBe(200);
+    expect(jarvis.body.reply).toContain(booking.body.reference);
+
+    expect(
+      (
+        await request(app)
+          .get("/api/admin/overview")
+          .set(authHeader)
+      ).status,
+    ).toBe(403);
+
+    const adminSignup = await request(app).post("/api/auth/register").send({
+      name: "API Smoke Admin",
+      email: "api-smoke-admin@example.test",
+      password: "test-password-123",
+    });
+    await col(s, "users").updateOne(
+      { _id: adminSignup.body.user._id },
+      { $set: { role: "admin" } },
+    );
+    const adminHeader = {
+      Authorization: `Bearer ${adminSignup.body.token}`,
+    };
+
+    const overview = await request(app)
+      .get("/api/admin/overview")
+      .set(adminHeader);
+    expect(overview.status).toBe(200);
+
+    const adminTrips = await request(app)
+      .get("/api/admin/trips")
+      .set(adminHeader);
+    expect(adminTrips.status).toBe(200);
+
+    const future = new Date(Date.now() + 3 * 86400000);
+    const created = await request(app)
+      .post("/api/admin/trips")
+      .set(adminHeader)
+      .send({
+        from: "Chennai",
+        to: "Madurai",
+        departureAt: future.toISOString(),
+        duration: 6,
+        fare: 55000,
+        name: "API Smoke Express",
+      });
+    expect(created.status).toBe(201);
+    const createdTripId = created.body._id as string;
+
+    const stopped = await request(app)
+      .post(`/api/admin/trips/${createdTripId}/stop`)
+      .set(adminHeader);
+    expect(stopped.status).toBe(200);
+    expect(stopped.body.status).toBe("STOPPED");
+
+    const resumed = await request(app)
+      .post(`/api/admin/trips/${createdTripId}/resume`)
+      .set(adminHeader);
+    expect(resumed.status).toBe(200);
+    expect(resumed.body.status).toBe("PUBLISHED");
+
+    const removed = await request(app)
+      .delete(`/api/admin/trips/${createdTripId}`)
+      .set(adminHeader);
+    expect(removed.status).toBe(200);
+    expect(removed.body.removed).toBe(true);
+
+    const webhookWithoutSignature = await request(app)
+      .post("/api/webhooks/razorpay")
+      .set("Content-Type", "application/json")
+      .send(JSON.stringify({ event: "payment.captured" }));
+    expect(webhookWithoutSignature.status).toBe(400);
+
+    const releasedAfterBooking = await request(app)
+      .delete(`/api/holds/${holdId}`)
+      .set(authHeader);
+    expect([200, 409]).toContain(releasedAfterBooking.status);
+  }, 60000);
+});
+
 describe("API and assistant", () => {
   const cfg = {
     secret: "test-only-secret-with-more-than-32-characters",
