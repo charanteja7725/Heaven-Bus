@@ -7,7 +7,10 @@ import { col, initialize, type Store } from "./db.js";
 import { cleanup } from "./booking.js";
 import { reconcile } from "./payments.js";
 import { seed } from "./seed.js";
-import { processJourneyDayEmails } from "./notifications.js";
+import {
+  processBookingConfirmationEmails,
+  processJourneyDayEmails,
+} from "./notifications.js";
 let store: Store | null = null;
 const secret = process.env.JWT_SECRET;
 if (!secret || secret.length < 32)
@@ -44,6 +47,11 @@ const emailConfig = {
     config.origins[0] ||
     "http://localhost:5173",
 };
+console.log(
+  emailConfig.apiKey && emailConfig.from
+    ? "Email delivery provider ready"
+    : "Email delivery provider not configured",
+);
 const app = createApp(() => store, config),
   http = createServer(app);
 const io = new Server(http, {
@@ -146,7 +154,8 @@ await connect();
 let cleaning = false,
   publishing = false,
   reconciling = false,
-  emailing = false;
+  emailing = false,
+  confirmationEmailing = false;
 const timers = [
   setInterval(() => void connect(), 30000),
   setInterval(async () => {
@@ -187,6 +196,17 @@ const timers = [
       publishing = false;
     }
   }, 400),
+  setInterval(async () => {
+    if (!store || confirmationEmailing) return;
+    confirmationEmailing = true;
+    try {
+      await processBookingConfirmationEmails(store, emailConfig);
+    } catch {
+      console.error("Booking confirmation email delivery will retry");
+    } finally {
+      confirmationEmailing = false;
+    }
+  }, 10000),
   setInterval(async () => {
     if (!store || emailing) return;
     emailing = true;
