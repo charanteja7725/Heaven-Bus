@@ -4,6 +4,11 @@ test.beforeEach(async ({ page }) => {
     throw error;
   });
 });
+test.afterEach(async ({ page }) => {
+  if (process.env.PW_SHOWCASE === "1") {
+    await page.waitForTimeout(1200);
+  }
+});
 test("home route search autocompletes available locations", async ({ page }) => {
   await page.goto("/");
   const from = page.getByLabel("Departure location");
@@ -372,17 +377,30 @@ test("another traveller sees holds and releases through live updates", async ({
   await expect(
     other.getByText("Live seat updates", { exact: true }),
   ).toBeVisible();
+  await page.bringToFront();
   await page
     .getByRole("button", { name: "Seat 1A, available", exact: true })
     .click();
   await expect(
     other.getByRole("button", { name: "Seat 1A, held", exact: true }),
   ).toBeDisabled();
+
+  if (process.env.PW_SHOWCASE === "1") {
+    await other.bringToFront();
+    await other.waitForTimeout(1400);
+    await page.bringToFront();
+  }
+
   await page
     .getByRole("button", { name: "Release my seats", exact: true })
     .click();
   await expect(
     other.getByRole("button", { name: "Seat 1A, available", exact: true }),
   ).toBeEnabled();
+
+  if (process.env.PW_SHOWCASE === "1") {
+    await other.bringToFront();
+    await other.waitForTimeout(1400);
+  }
   await observer.close();
 });
