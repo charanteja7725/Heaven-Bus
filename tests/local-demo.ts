@@ -1,5 +1,6 @@
 import "dotenv/config";
 import { MongoClient } from "mongodb";
+import { setServers } from "node:dns";
 import { spawn } from "node:child_process";
 import bcrypt from "bcryptjs";
 
@@ -13,6 +14,11 @@ if (/mongodb:\/\/(?:127\.0\.0\.1|localhost)/i.test(uri)) {
   throw new Error(
     "Visual showcase is configured for local MongoDB. Set SHOWCASE_MONGODB_URI to your MongoDB Atlas URI so no local 600 MB MongoDB download is required.",
   );
+}
+
+if (uri.startsWith("mongodb+srv://")) {
+  setServers(["8.8.8.8", "1.1.1.1"]);
+  console.log("Atlas SRV lookup using public DNS fallback.");
 }
 
 const dbName = "heaven_bus_showcase";
