@@ -6606,3 +6606,16 @@ select:focus-visible {
   .real-bus-wheel.front { right: 24px; }
   .real-bus-wheel.rear { left: 25px; }
 }
+
+
+.jarvis-ai-source {
+  display: inline-flex;
+  align-items: center;
+  margin-top: 0.4rem;
+  padding: 0.22rem 0.5rem;
+  border: 1px solid color-mix(in srgb, currentColor 18%, transparent);
+  border-radius: 999px;
+  font-size: 0.68rem;
+  font-weight: 700;
+  opacity: 0.72;
+}
