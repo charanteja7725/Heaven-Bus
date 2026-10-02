@@ -79,7 +79,14 @@ export async function processBookingConfirmationEmails(
     .find({
       status: "CONFIRMED",
       notificationEmail: { $type: "string", $ne: "" },
-      confirmationEmailStatus: { $in: ["PENDING", "RETRY", "EMAIL_PROVIDER_NOT_CONFIGURED"] },
+      $or: [
+        { confirmationEmailStatus: { $exists: false } },
+        {
+          confirmationEmailStatus: {
+            $in: ["PENDING", "RETRY", "EMAIL_PROVIDER_NOT_CONFIGURED"],
+          },
+        },
+      ],
     })
     .sort({ createdAt: 1 })
     .limit(100)
