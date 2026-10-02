@@ -1,4 +1,7 @@
-import "dotenv/config";
+import dotenv from "dotenv";
+
+dotenv.config({ path: ".env.ollama", override: false });
+dotenv.config({ override: false });
 import { createServer } from "node:http";
 import { MongoClient } from "mongodb";
 import { Server } from "socket.io";
@@ -56,6 +59,11 @@ console.log(
     : emailConfig.apiKey && emailConfig.from
       ? "Email delivery provider ready: Resend"
       : "Email delivery provider not configured",
+);
+console.log(
+  String(process.env.OLLAMA_ENABLED ?? "").toLowerCase() === "true"
+    ? `Ollama Jarvis enabled: ${process.env.OLLAMA_MODEL ?? "llama3.2:1b"} @ ${process.env.OLLAMA_URL ?? "http://127.0.0.1:11434"}`
+    : "Ollama Jarvis disabled; deterministic Jarvis rules remain active",
 );
 const app = createApp(() => store, config),
   http = createServer(app);
