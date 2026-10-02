@@ -4,6 +4,7 @@ dotenv.config({ path: ".env.ollama", override: false });
 dotenv.config({ override: false });
 import { createServer } from "node:http";
 import { MongoClient } from "mongodb";
+import { setServers } from "node:dns";
 import { Server } from "socket.io";
 import { createApp, type Config } from "./app.js";
 import { col, initialize, type Store } from "./db.js";
@@ -117,6 +118,21 @@ async function ensureBootstrapAdmin(s: Store) {
       ? "Production administrator ready"
       : "Administrator bootstrap waiting for account registration",
   );
+}
+
+const configuredMongoUri = process.env.MONGODB_URI;
+if (
+  configuredMongoUri?.startsWith("mongodb+srv://") &&
+  process.env.MONGODB_DNS_SERVERS
+) {
+  const dnsServers = process.env.MONGODB_DNS_SERVERS
+    .split(",")
+    .map((value) => value.trim())
+    .filter(Boolean);
+  if (dnsServers.length) {
+    setServers(dnsServers);
+    console.log(`MongoDB SRV lookup using configured DNS: ${dnsServers.join(", ")}`);
+  }
 }
 
 let connecting = false;
