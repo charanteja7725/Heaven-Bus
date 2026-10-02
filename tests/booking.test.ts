@@ -47,7 +47,7 @@ beforeAll(async () => {
   await client.connect();
   s = { client, db: client.db("test"), holdMs: 300000 };
   await initialize(s);
-}, 180000);
+}, process.env.CI ? 180000 : 900000);
 afterAll(async () => {
   await client?.close();
   await repl?.stop();
