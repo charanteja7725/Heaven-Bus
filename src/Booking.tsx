@@ -79,19 +79,44 @@ export function TravelLoader({
       role="status"
       aria-live="polite"
     >
-      <div className="travel-loader-route" aria-hidden="true">
-        <span className="travel-loader-stop start">
-          <i />
-        </span>
-        <span className="travel-loader-line">
-          <span className="travel-loader-progress" />
-        </span>
-        <span className="travel-loader-bus">
-          <BusFront size={21} />
-        </span>
-        <span className="travel-loader-stop end">
-          <i />
-        </span>
+      <div className="travel-loader-scene" aria-hidden="true">
+        <div className="loader-sky">
+          <span className="loader-sun" />
+          <span className="loader-cloud one" />
+          <span className="loader-cloud two" />
+          <span className="loader-hill far" />
+          <span className="loader-hill near" />
+        </div>
+        <div className="loader-road">
+          <span className="loader-road-edge" />
+          <span className="loader-lane lane-one" />
+          <span className="loader-lane lane-two" />
+          <span className="loader-lane lane-three" />
+          <span className="loader-lane lane-four" />
+        </div>
+        <div className="real-bus-shadow" />
+        <div className="real-loader-bus">
+          <span className="real-bus-roof" />
+          <span className="real-bus-windshield" />
+          <span className="real-bus-window w1" />
+          <span className="real-bus-window w2" />
+          <span className="real-bus-window w3" />
+          <span className="real-bus-window w4" />
+          <span className="real-bus-window w5" />
+          <span className="real-bus-door" />
+          <span className="real-bus-stripe" />
+          <span className="real-bus-name">HEAVEN—BUS</span>
+          <span className="real-bus-light front" />
+          <span className="real-bus-light rear" />
+          <span className="real-bus-wheel front">
+            <i />
+          </span>
+          <span className="real-bus-wheel rear">
+            <i />
+          </span>
+        </div>
+        <span className="loader-location start">{from}</span>
+        <span className="loader-location end">{to}</span>
       </div>
       <div className="travel-loader-copy">
         <strong>{title}</strong>
